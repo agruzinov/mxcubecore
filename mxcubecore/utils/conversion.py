@@ -153,7 +153,7 @@ def make_table(column_names, rows):
     lines.append(ruler)
 
     for row in rows:
-        lines.append("| %s" % row_format.format(*row))
+        lines.append("| %s" % row_format.format(*str(row)))
     lines.append(ruler)
     #
     return "\n".join(lines)
