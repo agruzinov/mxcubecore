@@ -175,7 +175,7 @@ class ISPyBClient(HardwareObject):
         self.ws_password = None
 
         self.base_result_url = None
-		self.login_ok = False
+        self.login_ok = False
         self.group_id = None
 
     def init(self):
