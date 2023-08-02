@@ -50,7 +50,6 @@ class P11Pinhole(MotorsNPosition):
 
 
     def load_positions(self):
-
         config = ConfigParser()
         config.read(self._config_file)
 
@@ -60,14 +59,14 @@ class P11Pinhole(MotorsNPosition):
         names = config["Pinholes"]["pinholesizelist"].split(",")
         names[0] = "Down"
 
-        units = ["micron",] * len(names)
+        units = ["micron"] * len(names)
         units[0] = ""
 
         posnames = copy.copy(names)
-        posnames[1:] = [ "{}um".format(posname) for posname in posnames[1:] ]
+        posnames[1:] = ["{}um".format(posname) for posname in posnames[1:]]
 
-        yposlist = map(int, config["Pinholes"]["pinholeyposlist"].split(","))
-        zposlist = map(int, config["Pinholes"]["pinholezposlist"].split(","))
+        yposlist = list(map(int, config["Pinholes"]["pinholeyposlist"].split(",")))
+        zposlist = list(map(int, config["Pinholes"]["pinholezposlist"].split(",")))
 
         for name, posname, unit, ypos, zpos in zip(names, posnames, units, yposlist, zposlist):
             self._positions[name] = {}

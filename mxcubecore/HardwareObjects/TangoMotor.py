@@ -68,7 +68,7 @@ class TangoMotor(AbstractMotor):
 
         if self.chan_position is not None:
             self.chan_position.connect_signal("update", self.update_value)
-            self.update_value(self.chan_position.value)
+            self.update_value(self.chan_position.get_value())
 
         self.chan_state = self.get_channel_object("axisState", None)
         if self.chan_state is None:
@@ -121,7 +121,7 @@ class TangoMotor(AbstractMotor):
             self.update_value()
 
     def get_value(self):
-        value = self.chan_position.getValue()
+        value = self.chan_position.get_value()
         return value
 
     def motstate_to_state(self, motstate):

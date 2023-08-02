@@ -203,29 +203,28 @@ class MotorsNPosition(AbstractActuator):
 
         current_pos = {}
 
-        #if self.name().lower() == "/pinhole":
-        #    self.log.debug("updating pinhole position")
-
         for motorname in self.motorlist:
-            current_pos[motorname] = self.motor_hwobjs[motorname].get_value()
-            #if self.name().lower() == "/pinhole":
-            #     self.log.debug("   - position for %s is %s" % (motorname, current_pos[motorname]))
+            value = self.motor_hwobjs[motorname].get_value()
+            print("==========", value, self.motor_hwobjs[motorname])
+            if value is None or value == "_NotInitializedValue":
+                # Skip calculation for uninitialized positions
+                return -1
+            current_pos[motorname] = int(value)
 
         for name in self._positions:
             posidx += 1
             for motorname in self.motorlist:
                 if motorname not in self._positions[name]:
                     continue
-                position = self._positions[name][motorname]
+                position = int(self._positions[name][motorname])
                 cur_pos = current_pos[motorname]
                 delta = self.deltas[motorname]
 
                 if abs(cur_pos - position) > delta:
                     break
             else:
-                #self.log.debug(" Found position %s for object %s" % (name, self.name()))
                 for motorname in self.motorlist:
-                    position = self._positions[name][motorname]
+                    position = int(self._positions[name][motorname])
                 current_idx = posidx
                 break
 
@@ -233,7 +232,8 @@ class MotorsNPosition(AbstractActuator):
             self.current_index = current_idx
             self.update_value(current_idx)
         return current_idx
-
+   
+    
     def update_multi_state(self):
 
         multi_state = HardwareObjectState.READY
