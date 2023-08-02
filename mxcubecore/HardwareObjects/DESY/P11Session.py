@@ -78,13 +78,19 @@ class P11Session(Session):
         return self.beamtime_info['proposalId'] 
 
     def read_beamtime_info(self):
-        for ety in os.scandir(PATH_BEAMTIME):
-            if ety.is_file() and ety.name.startswith('beamtime-metadata'):
-                info = self.load_info(ety.path)
-                self.log.debug(f"BEAMTIME INFO from {ety.path} is " + str(info))
-                if info is not None:
-                    self.beamtime_info.update( self.load_info(ety.path) )
-                self.beamtime_info['rootPath'] = PATH_BEAMTIME
+        try:
+            for ety in os.scandir(PATH_BEAMTIME):
+                if ety.is_file() and ety.name.startswith('beamtime-metadata'):
+                    info = self.load_info(ety.path)
+                    self.log.debug(f"BEAMTIME INFO from {ety.path} is " + str(info))
+                    if info is not None:
+                        self.beamtime_info.update( self.load_info(ety.path) )
+                    self.beamtime_info['rootPath'] = PATH_BEAMTIME
+        except:
+            self.log.debug(f"No beamtime ID is open. Use local path: " + str(PATH_FALLBACK))
+            self.beamtime_info['rootPath'] = PATH_FALLBACK
+
+           
 
     def read_commissioning_info(self):
         for ety in os.scandir(PATH_COMMISSIONING):
