@@ -21,6 +21,7 @@
 import logging
 import gevent
 import gevent.event
+import numpy as np
 
 try:
     import Queue as queue
@@ -323,15 +324,14 @@ class TangoChannel(ChannelObject):
         return self.device.get_attribute_config(self.attribute_name)
 
     def update(self, value=Poller.NotInitializedValue):
-
-        if value == Poller.NotInitializedValue:
+        if np.all(value == Poller.NotInitializedValue):
             value = self.get_value()
         if isinstance(value, tuple):
             value = list(value)
 
         self.value = value
-        self.emit("update", value)
-
+        self.emit("update", value)    
+    
     def get_value(self):
         if self.read_as_str:
             value = self.device.read_attribute(
@@ -340,7 +340,7 @@ class TangoChannel(ChannelObject):
         else:
             value = self.device.read_attribute(self.attribute_name).value
 
-        if value != self.value:
+        if not np.array_equal(value, self.value):  # Corrected comparison here
             self.update(value)
 
         return value
