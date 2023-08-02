@@ -321,7 +321,6 @@ class MjpgStreamVideo(AbstractVideoDevice):
                 sensor_height = int(sensor_info["value"])
             self.sensor_dimensions = (sensor_width, sensor_height)
 
-        self.set_is_ready(True)
         self.set_zoom(0) # overview camera
 
 
