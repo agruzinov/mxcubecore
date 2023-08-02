@@ -175,6 +175,7 @@ class ISPyBClient(HardwareObject):
         self.ws_password = None
 
         self.base_result_url = None
+		self.login_ok = False
         self.group_id = None
 
     def init(self):
@@ -377,6 +378,97 @@ class ISPyBClient(HardwareObject):
         return answer
 
     @trace
+    def get_proposal_by_username(self, username):
+
+        proposal_code = ""
+        proposal_number = 0
+
+        empty_dict = {
+            "Proposal": {},
+            "Person": {},
+            "Laboratory": {},
+            "Session": {},
+            "status": {"code": "error"},
+        }
+
+        if not self._shipping:
+            logging.getLogger("ispyb_client").warning(
+                "Error in get_proposal: Could not connect to server,"
+                + " returning empty proposal"
+            )
+            return empty_dict
+
+        try:
+            try:
+                person = self._shipping.service.findPersonByLogin(
+                    username, os.environ["SMIS_BEAMLINE_NAME"]
+                )
+            except WebFault as e:
+                logging.getLogger("ispyb_client").warning(e.message)
+                person = {}
+
+            try:
+                proposal = self._shipping.service.findProposalByLoginAndBeamline(
+                    username, os.environ["SMIS_BEAMLINE_NAME"]
+                )
+                if not proposal:
+                    logging.getLogger("ispyb_client").warning(
+                        "Error in get_proposal: No proposal has been found to  the user, returning empty proposal"
+                    )
+                    return empty_dict
+                proposal_code = proposal.code
+                proposal_number = proposal.number
+            except WebFault as e:
+                logging.getLogger("ispyb_client").warning(str(e))
+                proposal = {}
+
+            try:
+                lab = self._shipping.service.findLaboratoryByCodeAndNumber(
+                    proposal_code, proposal_number
+                )
+            except WebFault as e:
+                logging.getLogger("ispyb_client").warning(e.message)
+                lab = {}
+
+            try:
+                res_sessions = self._collection.service.findSessionsByProposalAndBeamLine(
+                    proposal_code, proposal_number, os.environ["SMIS_BEAMLINE_NAME"]
+                )
+                sessions = []
+
+                # Handels a list of sessions
+                for session in res_sessions:
+                    if session is not None:
+                        try:
+                            session.startDate = datetime.strftime(
+                                session.startDate, "%Y-%m-%d %H:%M:%S"
+                            )
+                            session.endDate = datetime.strftime(
+                                session.endDate, "%Y-%m-%d %H:%M:%S"
+                            )
+                        except Exception:
+                            pass
+
+                        sessions.append(utf_encode(asdict(session)))
+
+            except WebFault as e:
+                logging.getLogger("ispyb_client").warning(str(e))
+                sessions = []
+
+        except URLError:
+            logging.getLogger("ispyb_client").warning(_CONNECTION_ERROR_MSG)
+            return empty_dict
+
+        logging.getLogger("ispyb_client").info(str(sessions))
+        return {
+            "Proposal": utf_encode(asdict(proposal)),
+            "Person": utf_encode(asdict(person)),
+            "Laboratory": utf_encode(asdict(lab)),
+            "Session": sessions,
+            "status": {"code": "ok"},
+        }
+
+    @trace
     def get_proposal(self, proposal_code, proposal_number):
         """
         Returns the tuple (Proposal, Person, Laboratory, Session, Status).
@@ -416,8 +508,10 @@ class ISPyBClient(HardwareObject):
                     )
 
                     if proposal:
+                        logging.getLogger("HWR").debug("ISPyB. found  proposal=%s" % (proposal_number))
                         proposal.code = proposal_code
                     else:
+                        logging.getLogger("HWR").debug("ISPyB. could not find proposal=%s" % (proposal_number))
                         return {
                             "Proposal": {},
                             "Person": {},
@@ -640,6 +734,8 @@ class ISPyBClient(HardwareObject):
         login_name = loginID
         proposal_code = ""
         proposal_number = ""
+
+        self.login_ok = False
 
         # For porposal login, split the loginID to code and numbers
         if self.loginType == "proposal":
@@ -1121,6 +1217,7 @@ class ISPyBClient(HardwareObject):
                 "Error in get_samples: could not connect to server"
             )
 
+        logging.getLogger("HWR").debug("  - found %d samples in ISPyB for this session" % len(response_samples))
         return response_samples
 
     @trace
@@ -1147,6 +1244,8 @@ class ISPyBClient(HardwareObject):
         :returns: A list with sample_ref objects.
         :rtype: list
         """
+        logging.getLogger("HWR").debug("getting session samples from ISPyB - session_id %s" % str(session_id))
+
         if self._tools_ws:
             sample_references = []
             session = self.get_session(session_id)
@@ -1181,6 +1280,7 @@ class ISPyBClient(HardwareObject):
                     except Exception:
                         pass
 
+                    logging.getLogger("HWR").debug(" - sample found with location %s" % str(loc))
                     # Unmatched sample, just catch and do nothing
                     # (dont remove from sample_ref)
                     if not sample.code and not sample.sampleLocation:
@@ -1597,6 +1697,9 @@ class ISPyBClient(HardwareObject):
     def enable(self):
         self._disabled = False
 
+    def is_connected(self):
+        return self.login_ok
+
     def isInhouseUser(self, proposal_code, proposal_number):
         """
         Returns True if the proposal is considered to be a
@@ -1675,6 +1778,9 @@ class ISPyBClient(HardwareObject):
     def get_proposals_by_user(self, user_name):
         proposal_list = []
         res_proposal = []
+
+        # user_name = "clemenbor"
+        self.log.debug("ISPyB - Getting proposal for user: %s" % user_name)
 
         if self._disabled:
             return proposal_list
