@@ -92,9 +92,9 @@ class P11DetectorCover(AbstractShutter):
         if self.simulation:
             return self.simulated_update()
 
-        if self._nominal_value == self.VALUES.MOVING:
+        if self._nominal_value == self.VALUES.UNKNOWN:
             if (time.time() - self.cmd_started) < self.move_time_min:
-                return self.VALUES.MOVING
+                return self.VALUES.UNKNOWN
 
         self.cover_is_open = self.chan_state_open.get_value()
         self.cover_is_closed = self.chan_state_closed.get_value()
@@ -113,8 +113,8 @@ class P11DetectorCover(AbstractShutter):
 
         current_value = self.get_value()
 
-        if current_value == self.VALUES.MOVING:
-            self.log.error("Cannot move while moving")
+        if current_value == self.VALUES.UNKNOWN:
+            self.log.error("Cannot move while moving/unknown")
             return 
 
         if value != current_value:
@@ -124,7 +124,7 @@ class P11DetectorCover(AbstractShutter):
                 self.cmd_close()
 
             self.cmd_started = time.time()
-            self.update_value(self.VALUES.MOVING)
+            self.update_value(self.VALUES.UNKNOWN)
 
     def simul_do(self):
         gevent.sleep(3)
@@ -132,7 +132,7 @@ class P11DetectorCover(AbstractShutter):
         self.simulated_update()
 
     def is_moving(self):
-        return self.get_value() == self.VALUES.MOVING
+        return self.get_value() == self.VALUES.UNKNOWN
 
     def state_open_changed(self, value):
         """Updates cover state when cover open value changes
@@ -167,7 +167,7 @@ class P11DetectorCover(AbstractShutter):
             if time.time() - self.cmd_started > self.cmd_timeout:
                 value = self.VALUES.UNKNOWN
             else:    
-                value = self.VALUES.MOVING
+                value = self.VALUES.UNKNOWN
 
         self.update_value(value)
 
@@ -175,7 +175,7 @@ class P11DetectorCover(AbstractShutter):
 
     def simulated_update(self):
         if self.simulated_moving:
-            value = self.VALUES.MOVING
+            value = self.VALUES.UNKNOWN
         elif self.simulated_opened:
             value = self.VALUES.OPEN
         else:
@@ -183,3 +183,19 @@ class P11DetectorCover(AbstractShutter):
 
         self.update_value(value)
         return value
+
+
+
+    def is_open(self):
+        """Check if the shutter is open.
+        Returns:
+            (bool): True if open, False otherwise.
+        """
+        return self.get_value() == self.VALUES.OPEN
+
+    def is_closed(self):
+        """Check if the shutter is closed.
+        Returns:
+            (bool): True if open, False otherwise.
+        """
+        return self.get_value() == self.VALUES.CLOSED
