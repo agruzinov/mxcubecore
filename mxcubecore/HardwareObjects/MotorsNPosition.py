@@ -205,10 +205,6 @@ class MotorsNPosition(AbstractActuator):
 
         for motorname in self.motorlist:
             value = self.motor_hwobjs[motorname].get_value()
-            print("==========", value, self.motor_hwobjs[motorname])
-            if value is None or value == "_NotInitializedValue":
-                # Skip calculation for uninitialized positions
-                return -1
             current_pos[motorname] = int(value)
 
         for name in self._positions:
