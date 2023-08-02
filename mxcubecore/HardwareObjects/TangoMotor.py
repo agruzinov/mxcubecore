@@ -21,7 +21,7 @@ TangoMotor class defines motor in the Tango control system (used and tested in D
 """
 
 # mxcube_logging not found
-from mxcubecore.utils.mxcube_logging import log
+#from mxcubecore.utils.mxcube_logging import log
 from mxcubecore.HardwareObjects.abstract.AbstractMotor import AbstractMotor
 
 import gevent
