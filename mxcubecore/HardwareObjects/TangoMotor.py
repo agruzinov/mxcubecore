@@ -25,6 +25,7 @@ TangoMotor class defines motor in the Tango control system (used and tested in D
 from mxcubecore.HardwareObjects.abstract.AbstractMotor import AbstractMotor
 
 import gevent
+import logging
 
 __credits__ = ["DESY P11"]
 __license__ = "LGPLv3+"
@@ -157,9 +158,9 @@ class TangoMotor(AbstractMotor):
         :param value: float
         :return:
         """
-        log.debug("TangoMotor.py - Moving motor %s to %s" % (self.name(), value))
+        logging.debug("TangoMotor.py - Moving motor %s to %s" % (self.name(), value))
         self.start_moving()
-        self.chan_position.setValue(value)
+        self.chan_position.set_value(value)
 
     def start_moving(self):
         self.motor_state_changed("MOVING")
@@ -170,7 +171,7 @@ class TangoMotor(AbstractMotor):
 
     def _update_state(self):
         gevent.sleep(0.5)
-        self.motor_state_changed(self.chan_state.getValue())
+        self.motor_state_changed(self.chan_state.get_value())
 
     def update_value(self, value=None):
         """Updates motor position"""
