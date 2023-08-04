@@ -1776,8 +1776,8 @@ class ISPyBClient(HardwareObject):
 
     def _store_data_collection_group(self, group_data):
         """ """
-        group_id = self._collection.service.storeOrUpdateDataCollectionGroup(group_data)
-
+        #group_id = self._collection.service.storeOrUpdateDataCollectionGroup(group_data)
+        group_id="1"
         return group_id
 
     @trace
@@ -1785,7 +1785,7 @@ class ISPyBClient(HardwareObject):
         proposal_list = []
         res_proposal = []
 
-        # user_name = "clemenbor"
+        #user_name = "clemenbor"
         self.log.debug("ISPyB - Getting proposal for user: %s" % user_name)
 
         if self._disabled:
