@@ -1599,6 +1599,12 @@ class PathTemplate(object):
                 PathTemplate.archive_folder,
                 *folders[4:],
             )
+        elif PathTemplate.synchrotron_name == "DESY":
+            logging.getLogger("HWR").debug(
+                "PathTemplate (DESY) - (to be defined) directory is %s" % self.directory
+            )
+            #archive_directory = self.directory
+            archive_directory = HWR.beamline.session.get_archive_directory()
         elif PathTemplate.synchrotron_name == "ALBA":
             logging.getLogger("HWR").debug(
                 "PathTemplate (ALBA) - directory is %s" % self.directory
