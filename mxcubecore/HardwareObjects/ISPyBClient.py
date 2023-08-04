@@ -789,6 +789,8 @@ class ISPyBClient(HardwareObject):
                 "Proposal": None,
                 "session": None,
             }
+        
+        self.login_ok = True
 
         logging.getLogger("HWR").debug("Proposal is fine, get sessions from ISPyB...")
         logging.getLogger("HWR").debug(prop)
@@ -1195,6 +1197,10 @@ class ISPyBClient(HardwareObject):
     @trace
     def get_samples(self, proposal_id, session_id):
         response_samples = None
+        
+        logging.getLogger("HWR").debug("getting samples from ISPyB - session_id %s" % str(session_id))
+
+        logging.getLogger("HWR").debug("getting samples from ISPyB - proposal_id %s beamline is %s" % (str(proposal_id), self.beamline_name))
 
         if self._tools_ws:
             try:

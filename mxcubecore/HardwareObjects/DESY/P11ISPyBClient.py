@@ -25,6 +25,9 @@ class P11ISPyBClient(ISPyBClient):
        
         ISPyBClient.init(self)
 
+    def get_login_type(self):
+        return self.loginType
+    
     def update_data_collection(self, mx_collection, wait=False):
         mx_collection["beamline_name"] = "P11"
         ISPyBClient.update_data_collection(self, mx_collection, wait)
