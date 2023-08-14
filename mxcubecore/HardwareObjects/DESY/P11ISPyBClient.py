@@ -10,8 +10,6 @@ ssl._create_default_https_context = ssl._create_unverified_context
 class P11ISPyBClient(ISPyBClient):
 
     def init(self):
-        ISPyBClient.init(self)
-        
         self.simulated_proposal = self.get_property("proposal_simulated")
 
         if self.simulated_proposal == 1:
@@ -24,11 +22,9 @@ class P11ISPyBClient(ISPyBClient):
         logging.getLogger("HWR").debug("PROPOSAL CODE is %s" % self.simulated_prop_code)
         logging.getLogger("HWR").debug("PROPOSAL NUMBER is %s" % self.simulated_prop_number)
 
-        self.loginType="user"
+       
+        ISPyBClient.init(self)
 
-    def get_login_type(self):
-        return self.loginType
-    
     def update_data_collection(self, mx_collection, wait=False):
         mx_collection["beamline_name"] = "P11"
         ISPyBClient.update_data_collection(self, mx_collection, wait)
