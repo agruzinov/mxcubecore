@@ -523,7 +523,7 @@ class P11NanoDiff(GenericDiffractometer):
                 elif mot_state == HardwareObjectState.FAULT:
                    new_state = DiffractometerState.Fault
                    break
-                elif motor.is_moving():
+                elif not motor.is_ready():
                    new_state = DiffractometerState.Moving
                    break
 
@@ -623,9 +623,7 @@ class P11NanoDiff(GenericDiffractometer):
         self.phase_goingto = GenericDiffractometer.PHASE_CENTRING
 
         self.log.debug("  - close detector cover")
-        #Set explicit timeout=0 == no waiting in the base class as all timeout handling happens here.
         self.detcover_hwobj.close(timeout=0)
-
         
         self.log.debug("  - setting backlight in")
         self.backlight_hwobj.set_in() 
@@ -657,7 +655,7 @@ class P11NanoDiff(GenericDiffractometer):
 
         try:
             self.log.debug("  - close detector cover")
-            self.detcover_hwobj.close()
+            self.detcover_hwobj.close(timeout=0)
     
             self.log.debug("  - setting backlight out")
             self.backlight_hwobj.set_out() 
@@ -694,21 +692,21 @@ class P11NanoDiff(GenericDiffractometer):
 
 
     def detector_cover_open(self, wait=True):
-        self.detcover_hwobj.open()
+        self.detcover_hwobj.open(timeout=0)
         if wait:
             self.wait_detcover(state="close")
 
     def detector_cover_close(self, wait=True):
-        self.detcover_hwobj.close()
+        self.detcover_hwobj.close(timeout=0)
         if wait:
             self.wait_detcover(state="close")
 
     def wait_detcover(self, state, timeout=60):
         start_time = time.time()
         while time.time() - start_time > timeout:
-            if state == "open" and self.detcover_hwobj.is_open:
+            if state == "open" and self.detcover_hwobj.is_open():
                 break
-            elif state == "close" and self.detcover_hwobj.is_closed:
+            elif state == "close" and self.detcover_hwobj.is_closed():
                 break
             gevent.sleep(0.5)
 
@@ -759,7 +757,7 @@ class P11NanoDiff(GenericDiffractometer):
         self.log.debug(" SETTING BEAM LOCATION PHASE ")
 
         self.log.debug("  - open detector cover")
-        self.detcover_hwobj.open()
+        self.detcover_hwobj.open(timeout=0)
         self.log.debug("  - setting backlight out")
         self.backlight_hwobj.set_out() # out
 
@@ -775,8 +773,8 @@ class P11NanoDiff(GenericDiffractometer):
 
         omega_pos = self.get_omega_position()
 
-        cover_open = self.detcover_hwobj.is_open
-        cover_closed = self.detcover_hwobj.get_value()
+        cover_open = self.detcover_hwobj.is_open()
+        cover_closed = self.detcover_hwobj.is_closed()
         blight_in = self.backlight_hwobj.is_in()
         blight_out = self.backlight_hwobj.is_out()
         collim = self.collimator_hwobj.get_position()
