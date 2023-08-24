@@ -44,8 +44,8 @@ class P11Flux(AbstractFlux):
 
     def get_value(self):
         """Get flux at current transmission in units of photons/s"""
-        
-        return 5e12 #self.current_flux_dict["flux"]
+
+        return 5e12  # self.current_flux_dict["flux"]
 
     def measure_flux(self):
         """Measures intesity"""
