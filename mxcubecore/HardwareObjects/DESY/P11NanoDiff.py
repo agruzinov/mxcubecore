@@ -18,6 +18,7 @@
 #  along with MXCuBE.  If not, see <http://www.gnu.org/licenses/>.
 
 import sys
+
 if sys.version_info[0] >= 3:
     unicode = str
 
@@ -30,7 +31,7 @@ import gevent
 
 from mxcubecore.HardwareObjects.GenericDiffractometer import (
     GenericDiffractometer,
-    DiffractometerState
+    DiffractometerState,
 )
 from mxcubecore.BaseHardwareObjects import HardwareObjectState
 
@@ -39,10 +40,12 @@ from mxcubecore.TaskUtils import task
 from gevent.event import AsyncResult
 from enum import Enum, unique
 
+
 @unique
 class PhaseStates(Enum):
-     MOVING = "moving"
-     READY = "ready"
+    MOVING = "moving"
+    READY = "ready"
+
 
 class P11NanoDiff(GenericDiffractometer):
     """
@@ -86,45 +89,46 @@ class P11NanoDiff(GenericDiffractometer):
         self.centring_time = 0
 
         self.save_motor_list = None
-        self.pixels_per_mm_x, self.pixels_per_mm_y = (None,None)
+        self.pixels_per_mm_x, self.pixels_per_mm_y = (None, None)
 
         self._saved_position = {}
         self._saved_position["transfer"] = {
-                "phix": 0 ,
-                "phiy": 0 ,
-                "phiz": 0 ,
-                "microy": 0 ,
-                "microz": 0 ,
-                "sampx": 0 ,
-                "sampy": 0 ,
-            }
+            "phix": 0,
+            "phiy": 0,
+            "phiz": 0,
+            "microy": 0,
+            "microz": 0,
+            "sampx": 0,
+            "sampy": 0,
+        }
 
         save_motors = self.get_property("save_motors")
 
         self.log.debug("SAVE MOTORS are: %s" % str(save_motors))
 
         if save_motors:
-            self.save_motor_list = [motname.strip() \
-                    for motname in save_motors.split(",")]
+            self.save_motor_list = [
+                motname.strip() for motname in save_motors.split(",")
+            ]
 
         GenericDiffractometer.init(self)
 
-        #using sample_centring module  
+        # using sample_centring module
         self.centring_sampx = sample_centring.CentringMotor(
-            self.motor_hwobj_dict["sampx"], units='microns',
+            self.motor_hwobj_dict["sampx"], units="microns"
         )
         self.centring_sampy = sample_centring.CentringMotor(
-            self.motor_hwobj_dict["sampy"], units='microns',
+            self.motor_hwobj_dict["sampy"], units="microns"
         )
 
         self.centring_phi = sample_centring.CentringMotor(
-            self.motor_hwobj_dict["phi"], direction=-1, 
+            self.motor_hwobj_dict["phi"], direction=-1
         )
         self.centring_phiz = sample_centring.CentringMotor(
-            self.motor_hwobj_dict["phiz"], direction=1, units='microns'
+            self.motor_hwobj_dict["phiz"], direction=1, units="microns"
         )
         self.centring_phiy = sample_centring.CentringMotor(
-            self.motor_hwobj_dict["phiy"], direction=1, units='microns',
+            self.motor_hwobj_dict["phiy"], direction=1, units="microns"
         )
 
         self.detcover_hwobj = self.get_object_by_role("detector-cover")
@@ -141,7 +145,7 @@ class P11NanoDiff(GenericDiffractometer):
         self.connect(self.collimator_hwobj, "valueChanged", self.update_phase)
         self.connect(self.yag_hwobj, "valueChanged", self.update_phase)
         self.connect(self.beamstop_hwobj, "valueChanged", self.update_phase)
-        
+
         self.connect(self.omega_hwobj, "stateChanged", self.update_phase)
 
         self.update_phase()
@@ -150,19 +154,26 @@ class P11NanoDiff(GenericDiffractometer):
         self.beam_position = self.update_beam_position()
 
     def update_beam_position(self):
-        zoom_hwobj = self.motor_hwobj_dict['zoom'] 
+        zoom_hwobj = self.motor_hwobj_dict["zoom"]
         image_dimensions = zoom_hwobj.camera_hwobj.get_image_dimensions()
-        self.beam_position = [image_dimensions[0]/2, image_dimensions[1]/2]
+        self.beam_position = [image_dimensions[0] / 2, image_dimensions[1] / 2]
         self.zoom_centre["x"] = self.beam_position[0]
         self.zoom_centre["y"] = self.beam_position[1]
 
     def update_zoom_calibration(self):
-        zoom_hwobj = self.motor_hwobj_dict['zoom'] 
+        zoom_hwobj = self.motor_hwobj_dict["zoom"]
         pixels_per_mm_x, pixels_per_mm_y = zoom_hwobj.get_pixels_per_mm()
-        if (pixels_per_mm_x != self.pixels_per_mm_x) or (pixels_per_mm_y != self.pixels_per_mm_y): 
-            self.pixels_per_mm_x, self.pixels_per_mm_y = pixels_per_mm_x, pixels_per_mm_y 
-            self.emit("pixelsPerMmChanged", ((self.pixels_per_mm_x, self.pixels_per_mm_y),))
-        #self._update_state(DiffractometerState.Ready)
+        if (pixels_per_mm_x != self.pixels_per_mm_x) or (
+            pixels_per_mm_y != self.pixels_per_mm_y
+        ):
+            self.pixels_per_mm_x, self.pixels_per_mm_y = (
+                pixels_per_mm_x,
+                pixels_per_mm_y,
+            )
+            self.emit(
+                "pixelsPerMmChanged", ((self.pixels_per_mm_x, self.pixels_per_mm_y),)
+            )
+        # self._update_state(DiffractometerState.Ready)
 
     def execute_server_task(self, method, timeout=30, *args):
         return
@@ -240,11 +251,11 @@ class P11NanoDiff(GenericDiffractometer):
         self.update_zoom_calibration()
 
         beam_xc, beam_yc = self.beam_position
-        phi_pos = self.motor_hwobj_dict['phi'].get_value()
+        phi_pos = self.motor_hwobj_dict["phi"].get_value()
 
-        sampx_c = centred_positions_dict['sampx']
-        sampy_c = centred_positions_dict['sampy']
-        phiy_c = centred_positions_dict['phiy']
+        sampx_c = centred_positions_dict["sampx"]
+        sampy_c = centred_positions_dict["sampy"]
+        phiy_c = centred_positions_dict["phiy"]
 
         sampx_pos = self.centring_sampx.motor.get_value()
         sampy_pos = self.centring_sampy.motor.get_value()
@@ -268,10 +279,10 @@ class P11NanoDiff(GenericDiffractometer):
         xdist = phiy_d * self.pixels_per_mm_x
         ydist = dy * self.pixels_per_mm_y
 
-        x = beam_xc  + xdist
-        y = beam_yc  + ydist
+        x = beam_xc + xdist
+        y = beam_yc + ydist
 
-        return x,y
+        return x, y
 
     def start_auto_focus(self):
         """
@@ -283,7 +294,10 @@ class P11NanoDiff(GenericDiffractometer):
         """
         """
         self.goto_centring_phase()
-        self.log.debug("Manual 3 click centring. using sample centring module: %s" % self.use_sample_centring)
+        self.log.debug(
+            "Manual 3 click centring. using sample centring module: %s"
+            % self.use_sample_centring
+        )
         self.emit_progress_message("Manual 3 click centring...")
 
         self.current_centring_procedure = gevent.spawn(self.manual_centring)
@@ -301,12 +315,12 @@ class P11NanoDiff(GenericDiffractometer):
         self.log.debug("STARTING Manual Centring")
 
         motor_positions = {
-                'phiy': self.centring_phiy.motor.get_value(),
-                'phiz': self.centring_phiz.motor.get_value(),
-                'sampx': self.centring_sampx.motor.get_value(),
-                'sampy': self.centring_sampy.motor.get_value(),
-                'phi': self.centring_phi.motor.get_value(),
-                }
+            "phiy": self.centring_phiy.motor.get_value(),
+            "phiz": self.centring_phiz.motor.get_value(),
+            "sampx": self.centring_sampx.motor.get_value(),
+            "sampy": self.centring_sampy.motor.get_value(),
+            "phi": self.centring_phi.motor.get_value(),
+        }
 
         phi_mot = self.centring_phi.motor
         phi_start_pos = phi_mot.get_value()
@@ -321,9 +335,9 @@ class P11NanoDiff(GenericDiffractometer):
             Y.append(y)
             PHI.append(phi_mot.get_value())
 
-        #phi_mot.set_value(phi_start_pos)
-        #gevent.sleep(2)
-        #phi_mot.wait_ready()
+        # phi_mot.set_value(phi_start_pos)
+        # gevent.sleep(2)
+        # phi_mot.wait_ready()
 
         DX = []
         DY = []
@@ -335,31 +349,31 @@ class P11NanoDiff(GenericDiffractometer):
         for i in range(n_points):
             dx = X[i] - beam_xc
             dy = Y[i] - beam_yc
-            ang = math.radians( PHI[i])
+            ang = math.radians(PHI[i])
 
             DX.append(dx)
             DY.append(dy)
             ANG.append(ang)
-            
+
         for i in range(n_points):
             y0 = DY[i]
             ang0 = ANG[i]
-            if i < (n_points-1):
-                y1 = DY[i+1]
-                ang1 = ANG[i+1]
+            if i < (n_points - 1):
+                y1 = DY[i + 1]
+                ang1 = ANG[i + 1]
             else:
                 y1 = DY[0]
                 ang1 = ANG[0]
 
-            p = ( y0*math.sin(ang1) - y1*math.sin(ang0) ) / math.sin(ang1-ang0)
-            q = ( y0*math.cos(ang1) - y1*math.cos(ang0) ) / math.sin(ang1-ang0)
+            p = (y0 * math.sin(ang1) - y1 * math.sin(ang0)) / math.sin(ang1 - ang0)
+            q = (y0 * math.cos(ang1) - y1 * math.cos(ang0)) / math.sin(ang1 - ang0)
 
             P.append(p)
             Q.append(q)
 
-        x_s = -sum(Q)/n_points
-        y_s = sum(P)/n_points
-        z_s = sum(DX)/n_points
+        x_s = -sum(Q) / n_points
+        y_s = sum(P) / n_points
+        z_s = sum(DX) / n_points
 
         x_d_mm = x_s / self.pixels_per_mm_y
         y_d_mm = y_s / self.pixels_per_mm_y
@@ -377,9 +391,9 @@ class P11NanoDiff(GenericDiffractometer):
         y_pos = sampy_mot.get_value() + y_d
         z_pos = phiy_mot.get_value() + z_d
 
-        motor_positions['phiy'] = z_pos
-        motor_positions['sampx'] = x_pos
-        motor_positions['sampy'] = y_pos
+        motor_positions["phiy"] = z_pos
+        motor_positions["sampx"] = x_pos
+        motor_positions["sampy"] = y_pos
         return motor_positions
 
     def get_positions(self):
@@ -390,12 +404,12 @@ class P11NanoDiff(GenericDiffractometer):
         phi_pos = self.motor_hwobj_dict["phi"].get_value()
 
         return {
-                'phi': phi_pos,
-                'phiy': phiy_pos,
-                'phiz': phiz_pos,
-                'sampx': sampx_pos,
-                'sampy': sampy_pos,
-                }
+            "phi": phi_pos,
+            "phiy": phiy_pos,
+            "phiz": phiz_pos,
+            "sampx": sampx_pos,
+            "sampy": sampy_pos,
+        }
 
     def move_to_beam(self, x, y, omega=None):
         """
@@ -406,13 +420,13 @@ class P11NanoDiff(GenericDiffractometer):
         # calculate distance from clicked position to center in mm
         dx = (x - self.beam_position[0]) / self.pixels_per_mm_x
         dy = (y - self.beam_position[1]) / self.pixels_per_mm_y
-        
+
         phi = self.centring_phi.get_value()
 
         cphi = math.cos(math.radians(phi))
         sphi = math.sin(math.radians(phi))
 
-        samp_y = dy * cphi 
+        samp_y = dy * cphi
         samp_x = dy * sphi
 
         # convert to microns if necessary
@@ -489,7 +503,7 @@ class P11NanoDiff(GenericDiffractometer):
     def get_omega_position(self):
         return self.motor_hwobj_dict["phi"].get_value()
 
-    def get_omega_velocity(self ):
+    def get_omega_velocity(self):
         return self.motor_hwobj_dict["phi"].get_velocity()
 
     def set_omega_velocity(self, value):
@@ -515,19 +529,19 @@ class P11NanoDiff(GenericDiffractometer):
         if self.phase_state == self.PHASE_STATES.MOVING:
             new_state = DiffractometerState.Moving
         else:
-            for motname, motor in self.motor_hwobj_dict.items(): 
+            for motname, motor in self.motor_hwobj_dict.items():
                 mot_state = motor.get_state()
                 if mot_state == HardwareObjectState.UNKNOWN:
-                   new_state = DiffractometerState.Unknown
-                   break
+                    new_state = DiffractometerState.Unknown
+                    break
                 elif mot_state == HardwareObjectState.FAULT:
-                   new_state = DiffractometerState.Fault
-                   break
-                elif motor.is_moving():
-                   new_state = DiffractometerState.Moving
-                   break
+                    new_state = DiffractometerState.Fault
+                    break
+                elif not motor.is_ready():
+                    new_state = DiffractometerState.Moving
+                    break
 
-        if new_state != self.diffractometer_state:        
+        if new_state != self.diffractometer_state:
             self._update_state(new_state)
 
     def _update_state(self, new_state):
@@ -535,7 +549,7 @@ class P11NanoDiff(GenericDiffractometer):
         self.diffractometer_state = new_state
 
     @task
-    def goto_phase(self,phase):
+    def goto_phase(self, phase):
         self.log.debug("Starting phase change  - setting phase to %s\n" % phase)
 
         self.phase_state = self.PHASE_STATES.MOVING
@@ -561,16 +575,18 @@ class P11NanoDiff(GenericDiffractometer):
         start_wait = time.time()
 
         self.log.debug(" WAITING PHASE STARTED")
-        while (time.time() - start_wait < timeout):
+        while time.time() - start_wait < timeout:
             time.sleep(0.1)
 
             moving = False
-            for ho in [self.detcover_hwobj,
-                       self.backlight_hwobj,
-                       self.beamstop_hwobj,
-                       self.collimator_hwobj,
-                       self.yag_hwobj,
-                       self.pinhole_hwobj]:
+            for ho in [
+                self.detcover_hwobj,
+                self.backlight_hwobj,
+                self.beamstop_hwobj,
+                self.collimator_hwobj,
+                self.yag_hwobj,
+                self.pinhole_hwobj,
+            ]:
 
                 if ho.is_moving():
                     moving = True
@@ -582,23 +598,31 @@ class P11NanoDiff(GenericDiffractometer):
 
         self.log.debug(" PHASE REACHED. NOW WAITING FOR OMEGA")
         self.wait_omega()
-       
-        gevent.sleep(0.6) # allow for position events to arrive
+
+        gevent.sleep(0.6)  # allow for position events to arrive
         self.update_phase()
         self.motor_state_changed()
 
-
         # Extra waiting loop for the pinhole did not reached the top position because it is blocked.
-        pinhole_states=["200","100", "50", "20", "Down"]
-        timeout=140
+        pinhole_states = ["200", "100", "50", "20", "Down"]
+        timeout = 140
         start_wait = time.time()
-        self.log.debug("================= Wait whiile pinholes are not blocked whille going up. Pinhole now in the position "+str(self.pinhole_hwobj.get_position()))
-        while (time.time() - start_wait < timeout):
+        self.log.debug(
+            "================= Wait whiile pinholes are not blocked whille going up. Pinhole now in the position "
+            + str(self.pinhole_hwobj.get_position())
+        )
+        while time.time() - start_wait < timeout:
             time.sleep(0.1)
 
             for st in pinhole_states:
-                if self.pinhole_hwobj.get_position() == st and not self.pinhole_hwobj.is_moving():
-                    self.log.debug("Pinhole has reached position "+str(self.pinhole_hwobj.get_position()))
+                if (
+                    self.pinhole_hwobj.get_position() == st
+                    and not self.pinhole_hwobj.is_moving()
+                ):
+                    self.log.debug(
+                        "Pinhole has reached position "
+                        + str(self.pinhole_hwobj.get_position())
+                    )
                     break
                 else:
                     self.log.debug("Still waiting for the pinhole")
@@ -607,12 +631,6 @@ class P11NanoDiff(GenericDiffractometer):
 
         self.log.debug(" PHASE CHANGED COMPLETED")
         self.waiting_phase = False
-
-
-
-
-
-        
 
     def is_centring_phase(self):
         return self.get_phase() == GenericDiffractometer.PHASE_CENTRING
@@ -623,12 +641,10 @@ class P11NanoDiff(GenericDiffractometer):
         self.phase_goingto = GenericDiffractometer.PHASE_CENTRING
 
         self.log.debug("  - close detector cover")
-        #Set explicit timeout=0 == no waiting in the base class as all timeout handling happens here.
         self.detcover_hwobj.close(timeout=0)
 
-        
         self.log.debug("  - setting backlight in")
-        self.backlight_hwobj.set_in() 
+        self.backlight_hwobj.set_in()
 
         self.log.debug("  - putting collimator down")
         self.collimator_hwobj.set_position("Down")
@@ -649,7 +665,7 @@ class P11NanoDiff(GenericDiffractometer):
     def is_transfer_phase(self):
         return self.get_phase() == GenericDiffractometer.PHASE_TRANSFER
 
-    def goto_transfer_phase(self,wait=True):
+    def goto_transfer_phase(self, wait=True):
 
         self.log.debug(" SETTING TRANSFER PHASE ")
         self.phase_goingto = GenericDiffractometer.PHASE_TRANSFER
@@ -657,29 +673,29 @@ class P11NanoDiff(GenericDiffractometer):
 
         try:
             self.log.debug("  - close detector cover")
-            self.detcover_hwobj.close()
-    
+            self.detcover_hwobj.close(timeout=0)
+
             self.log.debug("  - setting backlight out")
-            self.backlight_hwobj.set_out() 
-    
+            self.backlight_hwobj.set_out()
+
             self.log.debug("  - putting collimator down")
             self.collimator_hwobj.set_position("Down")
-    
+
             self.log.debug("  - setting beamstop out")
             self.beamstop_hwobj.set_position("Out")
-    
+
             self.log.debug("  - moving yag down")
             self.yag_hwobj.set_position("Out")
-    
+
             self.log.debug("  - moving pinhole down")
             if not self.ignore_pinhole:
                 self.pinhole_hwobj.set_position("Down")
-    
+
             self.log.debug("  - moving omega to 0")
-    
+
             self.move_omega(0)
             self.restore_position("transfer")
-    
+
             self.log.debug("  - moving gonio tower to 0")
         finally:
             self.moving_motors = False
@@ -692,30 +708,29 @@ class P11NanoDiff(GenericDiffractometer):
         # sampy to 0
         # microx, microy to 0
 
-
     def detector_cover_open(self, wait=True):
-        self.detcover_hwobj.open()
+        self.detcover_hwobj.open(timeout=0)
         if wait:
             self.wait_detcover(state="close")
 
     def detector_cover_close(self, wait=True):
-        self.detcover_hwobj.close()
+        self.detcover_hwobj.close(timeout=0)
         if wait:
             self.wait_detcover(state="close")
 
     def wait_detcover(self, state, timeout=60):
         start_time = time.time()
         while time.time() - start_time > timeout:
-            if state == "open" and self.detcover_hwobj.is_open:
+            if state == "open" and self.detcover_hwobj.is_open():
                 break
-            elif state == "close" and self.detcover_hwobj.is_closed:
+            elif state == "close" and self.detcover_hwobj.is_closed():
                 break
             gevent.sleep(0.5)
 
     def is_collect_phase(self):
         return self.get_phase() == GenericDiffractometer.PHASE_COLLECTION
 
-    def goto_collect_phase(self,wait=True):
+    def goto_collect_phase(self, wait=True):
         self.phase_goingto = GenericDiffractometer.PHASE_COLLECTION
 
         self.log.debug(" SETTING DATA COLLECTION PHASE ")
@@ -726,7 +741,7 @@ class P11NanoDiff(GenericDiffractometer):
         self.log.debug("  - moving yag down")
 
         # self.detcover_hwobj.open()
-        self.backlight_hwobj.set_out() 
+        self.backlight_hwobj.set_out()
         self.collimator_hwobj.set_position("Up")
         self.beamstop_hwobj.set_position("In")
         self.yag_hwobj.set_position("Out")
@@ -737,8 +752,7 @@ class P11NanoDiff(GenericDiffractometer):
         if self.pinhole_hwobj.get_position() == "Down":
             print("Pinhole is down. Setting pinhole to 200.")
             self.pinhole_hwobj.set_position("200")
-        
-        
+
         # restore pinhole position is the role of save / restore at mounting
         # time. not of the collect phase
         # self.pinhole_hwobj.set_position("In")
@@ -748,9 +762,6 @@ class P11NanoDiff(GenericDiffractometer):
         if wait:
             self.wait_phase()
 
-        
-            
-
         # sampx to 0
 
     def goto_beam_phase(self, wait=True):
@@ -759,9 +770,9 @@ class P11NanoDiff(GenericDiffractometer):
         self.log.debug(" SETTING BEAM LOCATION PHASE ")
 
         self.log.debug("  - open detector cover")
-        self.detcover_hwobj.open()
+        self.detcover_hwobj.open(timeout=0)
         self.log.debug("  - setting backlight out")
-        self.backlight_hwobj.set_out() # out
+        self.backlight_hwobj.set_out()  # out
 
         self.log.debug("  - putting collimator up")
         self.log.debug("  - setting beamstop in")
@@ -775,8 +786,8 @@ class P11NanoDiff(GenericDiffractometer):
 
         omega_pos = self.get_omega_position()
 
-        cover_open = self.detcover_hwobj.is_open
-        cover_closed = self.detcover_hwobj.get_value()
+        cover_open = self.detcover_hwobj.is_open()
+        cover_closed = self.detcover_hwobj.is_closed()
         blight_in = self.backlight_hwobj.is_in()
         blight_out = self.backlight_hwobj.is_out()
         collim = self.collimator_hwobj.get_position()
@@ -836,7 +847,7 @@ class P11NanoDiff(GenericDiffractometer):
         elif self.phase_goingto is GenericDiffractometer.PHASE_COLLECTION:
             if not blight_out:
                 missing.append("lightout")
-            #if not cover_open:
+            # if not cover_open:
             #    missing.append("cover_opened")
             if not collim == "Up":
                 missing.append("collim_up")
@@ -851,24 +862,24 @@ class P11NanoDiff(GenericDiffractometer):
             current_phase = GenericDiffractometer.PHASE_UNKNOWN
 
         # if blight_in and cover_closed and \
-            # collim == "Down" and bstop == "Out" and \
-            # yag == "Out" and pinh == "Down":
-                # current_phase = GenericDiffractometer.PHASE_CENTRING
+        # collim == "Down" and bstop == "Out" and \
+        # yag == "Out" and pinh == "Down":
+        # current_phase = GenericDiffractometer.PHASE_CENTRING
         # elif blight_out and cover_closed and \
-             # collim == "Down" and bstop == "Out" and \
-             # yag == "Out" and pinh == "Down" and \
-             # abs(omega_pos) < 0.01:
-                # current_phase = GenericDiffractometer.PHASE_TRANSFER
+        # collim == "Down" and bstop == "Out" and \
+        # yag == "Out" and pinh == "Down" and \
+        # abs(omega_pos) < 0.01:
+        # current_phase = GenericDiffractometer.PHASE_TRANSFER
         # elif blight_out and cover_open and \
-             # collim == "Up" and bstop == "In" and \
-             # yag == "Out":
-                # current_phase = GenericDiffractometer.PHASE_COLLECTION
+        # collim == "Up" and bstop == "In" and \
+        # yag == "Out":
+        # current_phase = GenericDiffractometer.PHASE_COLLECTION
 
         if self.phase_goingto == current_phase:
             self.log.debug("PHASE REACHED - %s" % self.phase_goingto)
-            
+
             self.phase_goingto = None
-       
+
         if current_phase == GenericDiffractometer.PHASE_UNKNOWN:
             if self.phase_goingto is not None:
                 self.log.debug("PHASE (%s) NOT REACHED YET" % str(self.phase_goingto))
@@ -879,11 +890,10 @@ class P11NanoDiff(GenericDiffractometer):
                 self.current_phase = current_phase
                 self.emit("minidiffPhaseChanged", (self.current_phase,))
 
-         
         # if omega_moving or cover_moving or light_moving:
-         #    phase_state = self.PHASE_STATES.MOVING
-        #else:
-            #phase_state = self.PHASE_STATES.READY
+        #    phase_state = self.PHASE_STATES.MOVING
+        # else:
+        # phase_state = self.PHASE_STATES.READY
 
         if self.phase_goingto:
             phase_state = self.PHASE_STATES.MOVING
@@ -901,9 +911,9 @@ class P11NanoDiff(GenericDiffractometer):
             saved_position[motname] = self.motor_hwobj_dict[motname].get_value()
         saved_position["pinhole"] = self.pinhole_hwobj.get_position()
         saved_position["backlight"] = self.backlight_hwobj.get_value()
-        self._saved_position[position_name]= saved_position
+        self._saved_position[position_name] = saved_position
         self.log.debug("P11NanoDiff - saving positions for %s" % position_name)
-        for name,value in saved_position.items():
+        for name, value in saved_position.items():
             self.log.debug("     %s - %s  " % (name, value))
 
     def wait_position_ready(self, timeout=70):
@@ -915,7 +925,9 @@ class P11NanoDiff(GenericDiffractometer):
                 if not self.motor_hwobj_dict[motname].is_ready():
                     busy = True
                     state = self.motor_hwobj_dict[motname].get_state()
-                    self.log.debug("  - motor %s is not ready. it is %s" % (motname, str(state)))
+                    self.log.debug(
+                        "  - motor %s is not ready. it is %s" % (motname, str(state))
+                    )
 
             time.sleep(0.2)
 
@@ -943,18 +955,18 @@ class P11NanoDiff(GenericDiffractometer):
     def restore_position(self, position_name):
         self.log.debug("Restoring position for %s" % position_name)
         self.log.debug(" (available are: %s)" % self._saved_position.keys())
-        positions =  self._saved_position.get(position_name, None)
+        positions = self._saved_position.get(position_name, None)
 
-        if positions: 
-            for motname,position in positions.items():
+        if positions:
+            for motname, position in positions.items():
                 if motname not in ["pinhole", "backlight"]:
                     self.motor_hwobj_dict[motname].set_value(position)
-                
-            if 'pinhole' in self._saved_position[position_name]:
+
+            if "pinhole" in self._saved_position[position_name]:
                 pinh_pos = self._saved_position[position_name]["pinhole"]
                 if not self.ignore_pinhole:
                     self.pinhole_hwobj.set_position(pinh_pos)
-            if 'backlight' in self._saved_position[position_name]:
+            if "backlight" in self._saved_position[position_name]:
                 light_value = self._saved_position[position_name]["backlight"]
                 self.backlight_hwobj.set_value(light_value)
 
@@ -963,7 +975,6 @@ class P11NanoDiff(GenericDiffractometer):
             self.log.error("No transfer positions saved for %s" % position_name)
 
         self.update_phase()
-
 
     def move_motors(self, motor_positions, timeout=15):
         """
@@ -978,11 +989,13 @@ class P11NanoDiff(GenericDiffractometer):
 
         self.wait_device_ready(timeout)
 
-        for motor in ['phiy', 'phiz']:
+        for motor in ["phiy", "phiz"]:
             if motor not in motor_positions:
                 continue
             position = motor_positions[motor]
-            self.log.debug(f"first moving translation motor '{motor}' to position {position}")
+            self.log.debug(
+                f"first moving translation motor '{motor}' to position {position}"
+            )
 
             motor_hwobj = self.motor_hwobj_dict.get(motor)
             if None in (motor_hwobj, position):
@@ -992,11 +1005,13 @@ class P11NanoDiff(GenericDiffractometer):
         self.wait_device_ready(timeout)
         self.log.debug(f"  translation movements DONE")
 
-        for motor in ['sampx', 'sampy']:
+        for motor in ["sampx", "sampy"]:
             if motor not in motor_positions:
                 continue
             position = motor_positions[motor]
-            self.log.debug(f"then moving alignment motor '{motor}' to position {position}")
+            self.log.debug(
+                f"then moving alignment motor '{motor}' to position {position}"
+            )
 
             motor_hwobj = self.motor_hwobj_dict.get(motor)
             if None in (motor_hwobj, position):
@@ -1005,20 +1020,20 @@ class P11NanoDiff(GenericDiffractometer):
         gevent.sleep(0.1)
         self.wait_device_ready(timeout)
         self.log.debug(f"  alignment movements DONE")
-        
-        if 'phi' in motor_positions:
+
+        if "phi" in motor_positions:
             self.log.debug(f"finally moving motor 'phi' to position {position}")
-            position = motor_positions['phi']
-            motor_hwobj = self.motor_hwobj_dict.get('phi')
+            position = motor_positions["phi"]
+            motor_hwobj = self.motor_hwobj_dict.get("phi")
             if None not in (motor_hwobj, position):
                 motor_hwobj.set_value(position)
                 gevent.sleep(0.1)
                 self.wait_device_ready(timeout)
-            self.log.debug('   phi move DONE')
+            self.log.debug("   phi move DONE")
 
         # is there anything left?
         for motor in motor_positions.keys():
-            if motor in ['phiy', 'phiz', 'phi', 'sampx', 'sampy']:
+            if motor in ["phiy", "phiz", "phi", "sampx", "sampy"]:
                 continue
             position = motor_positions[motor]
             self.log.debug(f"moving remaining motor {motor} to position {position}")
@@ -1046,4 +1061,3 @@ class P11NanoDiff(GenericDiffractometer):
             gevent.sleep(self.delay_state_polling)
 
         self.wait_device_ready(timeout)
-

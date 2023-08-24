@@ -121,4 +121,3 @@ class ValueStateChannel(HardwareObject):
         if _state != self.current_state:
             self.current_state = _state
             self.emit("stateChanged", _state)
-

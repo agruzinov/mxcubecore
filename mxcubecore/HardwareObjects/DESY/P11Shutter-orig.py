@@ -1,4 +1,3 @@
-
 #  Project: MXCuBE
 #  https://github.com/mxcube
 #
@@ -38,9 +37,9 @@ class P11Shutter(AbstractShutter):
 
     default_timeout = 6
 
-    def __init__(self,name):
+    def __init__(self, name):
 
-        super(AbstractShutter,self).__init__(name)
+        super(AbstractShutter, self).__init__(name)
 
         self.simulation = False
         self.simulated_opened = True
@@ -51,7 +50,6 @@ class P11Shutter(AbstractShutter):
 
         self.chan_state_open = None
         self.chan_state_close = None
-        
 
     def init(self):
         """Initilise the predefined values"""
@@ -67,17 +65,18 @@ class P11Shutter(AbstractShutter):
             self.chan_state_open = self.get_channel_object("chanStateOpen")
             self.chan_state_closed = self.get_channel_object("chanStateClosed")
 
-
             if self.chan_state_open is not None:
                 self.chan_state_open.connect_signal("update", self.state_open_changed)
             if self.chan_state_open is not None:
-                self.chan_state_closed.connect_signal("update", self.state_closed_changed)
+                self.chan_state_closed.connect_signal(
+                    "update", self.state_closed_changed
+                )
 
             self.state_open_changed(self.chan_state_open.get_value())
         else:
             self.simulated_update()
 
-        super(AbstractShutter,self).init()
+        super(AbstractShutter, self).init()
 
     def get_value(self):
         if self.simulation:
@@ -85,13 +84,13 @@ class P11Shutter(AbstractShutter):
 
         is_opened = self.chan_state_open.get_value()
         is_closed = self.chan_state_closed.get_value()
-        return self.update_shutter_state(opened=is_opened,closed=is_closed)
-       
+        return self.update_shutter_state(opened=is_opened, closed=is_closed)
+
     def _set_value(self, value):
         if value == self.VALUES.OPEN:
-             open_it = 1
+            open_it = 1
         elif value == self.VALUES.CLOSED:
-             open_it = 0
+            open_it = 0
         else:
             self.log.debug(" ###  setting wrong value for shutter %s" % str(value))
             return
@@ -134,9 +133,9 @@ class P11Shutter(AbstractShutter):
         :return: shutter state as str
         """
         if opened == 0:
-             value = self.VALUES.OPEN
+            value = self.VALUES.OPEN
         elif closed == 0:
-             value = self.VALUES.CLOSED
+            value = self.VALUES.CLOSED
         else:
             if time.time() - self.cmd_started > self.cmd_timeout:
                 value = self.VALUES.UNKNOWN

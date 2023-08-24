@@ -1,17 +1,15 @@
-
 from mxcubecore.HardwareObjects.ISPyBClient import ISPyBClient
 from mxcubecore import HardwareRepository as HWR
 from requests import post
 from urllib.parse import urljoin
 import logging
 import ssl
+
 ssl._create_default_https_context = ssl._create_unverified_context
 
-class P11ISPyBClient(ISPyBClient):
 
+class P11ISPyBClient(ISPyBClient):
     def init(self):
-        ISPyBClient.init(self)
-        
         self.simulated_proposal = self.get_property("proposal_simulated")
 
         if self.simulated_proposal == 1:
@@ -20,26 +18,27 @@ class P11ISPyBClient(ISPyBClient):
         else:
             self.simulated_prop_code = None
             self.simulated_prop_number = None
-        logging.getLogger("HWR").debug("PROPOSAL SIMULATED is %s" % self.simulated_proposal)
+        logging.getLogger("HWR").debug(
+            "PROPOSAL SIMULATED is %s" % self.simulated_proposal
+        )
         logging.getLogger("HWR").debug("PROPOSAL CODE is %s" % self.simulated_prop_code)
-        logging.getLogger("HWR").debug("PROPOSAL NUMBER is %s" % self.simulated_prop_number)
+        logging.getLogger("HWR").debug(
+            "PROPOSAL NUMBER is %s" % self.simulated_prop_number
+        )
 
-        self.loginType="user"
+        ISPyBClient.init(self)
 
-    def get_login_type(self):
-        return self.loginType
-    
     def update_data_collection(self, mx_collection, wait=False):
         mx_collection["beamline_name"] = "P11"
         ISPyBClient.update_data_collection(self, mx_collection, wait)
 
     def _store_data_collection(self, mx_collection, bl_config=None):
         self.prepare_collect_for_lims(mx_collection)
-        return ISPyBClient._store_data_collection(self,mx_collection, bl_config)
+        return ISPyBClient._store_data_collection(self, mx_collection, bl_config)
 
     def store_image(self, image_dict):
         self.prepare_image_for_lims(image_dict)
-        return ISPyBClient.store_image(self,image_dict)
+        return ISPyBClient.store_image(self, image_dict)
 
     def prepare_collect_for_lims(self, mx_collect_dict):
         # Attention! directory passed by reference. modified in place
@@ -97,7 +96,5 @@ class P11ISPyBClient(ISPyBClient):
     #         authenticated = True
     #         msg = "ISPyB username: %s. succesful login. token is: %s" % (login_id, token)
     #         self.log.debug("   - " + msg)
-            
-    #     return authenticated, msg
 
-   
+    #     return authenticated, msg

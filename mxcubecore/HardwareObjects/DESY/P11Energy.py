@@ -1,5 +1,5 @@
 # encoding: utf-8
-# 
+#
 #  Project: MXCuBE
 #  https://github.com/mxcube.
 #
@@ -23,15 +23,15 @@ from mxcubecore.HardwareObjects.mockup.ActuatorMockup import ActuatorMockup
 
 import logging
 
-log= logging.getLogger("HWR")
+log = logging.getLogger("HWR")
 
 
 class P11Energy(AbstractEnergy):
-    
+
     _default_energy = 12.0
 
     def __init__(self, name):
-        super(P11Energy,self).__init__(name)
+        super(P11Energy, self).__init__(name)
 
     def init(self):
         self.chan_energy = self.get_channel_object("chanEnergy")
@@ -44,17 +44,19 @@ class P11Energy(AbstractEnergy):
 
         self.chan_autobrake = self.get_channel_object("chanAutoBrake")
 
-        limits = self.get_property('limits',None)
+        limits = self.get_property("limits", None)
 
         try:
-            limits = list(map(float,limits.split(',')))
+            limits = list(map(float, limits.split(",")))
         except Exception as e:
             log.error("P11Transmission - cannot parse limits: {}".format(str(e)))
             limits = None
 
         if limits is None:
-            log.error("P11Transmission - Cannot read LIMITS from configuration xml file.  Check values")
-            return 
+            log.error(
+                "P11Transmission - Cannot read LIMITS from configuration xml file.  Check values"
+            )
+            return
         else:
             self.set_limits(limits)
 
@@ -74,11 +76,11 @@ class P11Energy(AbstractEnergy):
 
         _state = str(state)
 
-        if _state == 'ON':
+        if _state == "ON":
             self.update_state(self.STATES.READY)
-        elif _state == 'MOVING':
+        elif _state == "MOVING":
             self.update_state(self.STATES.BUSY)
-        elif _state == 'DISABLED':
+        elif _state == "DISABLED":
             self.update_state(self.STATES.OFF)
         else:
             self.update_state(self.STATES.FAULT)
@@ -106,7 +108,7 @@ class P11Energy(AbstractEnergy):
         """
         prog_value = value * 1000
         self.chan_autobrake.set_value(True)
-        if self.get_state() == self.STATES.READY: 
+        if self.get_state() == self.STATES.READY:
             self.log.debug("Programming ENERGY to %s" % prog_value)
             self.chan_energy.set_value(prog_value)
         pass
@@ -128,4 +130,3 @@ class P11Energy(AbstractEnergy):
                 )
                 return None
         return value
-

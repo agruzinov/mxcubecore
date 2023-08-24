@@ -44,7 +44,10 @@ import yaml  # To parse the beamtime metadata file
 import subprocess
 
 
-assert sys.version_info >= (2, 7), 'Python version too old'  # If Python version < 2.7 no point going further
+assert sys.version_info >= (
+    2,
+    7,
+), "Python version too old"  # If Python version < 2.7 no point going further
 
 if sys.version_info >= (3, 6):
     from enum import IntEnum, auto, unique
@@ -54,14 +57,19 @@ if sys.version_info >= (3, 6):
         """
         Supported triggering methods.
         """
+
         SLURM_REST_API = auto()
         REMOTE_SBATCH_SCRIPT = auto()
         LOCAL_BASH_SCRIPT = auto()
+
+
 else:  # 2.7 < version < 3.6, because enum only appeared in 3.4, auto() in 3.6
+
     class TriggerMethod:
         """
         Stop-gap enum solution for older Python versions
         """
+
         SLURM_REST_API = 0
         REMOTE_SBATCH_SCRIPT = 1
         LOCAL_BASH_SCRIPT = 2
@@ -73,20 +81,32 @@ class Trigger:
 
     Information about access to remote online computing resources
     """
-    def __init__(self, trigger_method=TriggerMethod.REMOTE_SBATCH_SCRIPT, beamline_root_dir='/gpfs'):
+
+    def __init__(
+        self,
+        trigger_method=TriggerMethod.REMOTE_SBATCH_SCRIPT,
+        beamline_root_dir="/gpfs",
+    ):
         """
         Construct a Trigger object with relevant information for remote computing resource access.
 
         :param trigger_method: method to use for triggering processing, either locally or remotely
         :param beamline_root_dir: full path to root directory of beamline filesystem
         """
-        self.trigger_method = trigger_method  # TODO: make this data member immutable from this point on
+        self.trigger_method = (
+            trigger_method
+        )  # TODO: make this data member immutable from this point on
         self.beamtime_metadata_file = locate_metadata_file(beamline_root_dir)
-        self.beamline, self.beamtime, self.remote_data_dir, self.user_name, self.user_sshkey, \
-            self.slurm_reservation, self.slurm_partition, self.slurm_node = parse_metadata_file(self.beamtime_metadata_file)
+        self.beamline, self.beamtime, self.remote_data_dir, self.user_name, self.user_sshkey, self.slurm_reservation, self.slurm_partition, self.slurm_node = parse_metadata_file(
+            self.beamtime_metadata_file
+        )
         # Results are written to the _beamline filesystem through a mountpoint on reserved cluster nodes
-        beamlinefs_mountpoint = os.path.join('/beamline', self.beamline)  # TODO: Hardcoded mountpoint, current location as per IT
-        beamlinefs_currdir = self.get_beamtime_tag()  # either 'current' or <commissioning id>
+        beamlinefs_mountpoint = os.path.join(
+            "/beamline", self.beamline
+        )  # TODO: Hardcoded mountpoint, current location as per IT
+        beamlinefs_currdir = (
+            self.get_beamtime_tag()
+        )  # either 'current' or <commissioning id>
         self.remote_result_dir = os.path.join(beamlinefs_mountpoint, beamlinefs_currdir)
 
     def get_beamtime_tag(self):
@@ -96,7 +116,9 @@ class Trigger:
         :returns: 'current' for regular user beamtimes, <commissioning ID> for commissioning beamtimes
         """
         curr_beamtime_dir = os.path.dirname(self.beamtime_metadata_file)
-        return os.path.basename(curr_beamtime_dir.rstrip('/'))  # either 'current' or <commissioning id>
+        return os.path.basename(
+            curr_beamtime_dir.rstrip("/")
+        )  # either 'current' or <commissioning id>
 
     def get_ssh_command(self):
         """
@@ -107,15 +129,22 @@ class Trigger:
         :returns: prepared SSH command with all required options for remote connections
         """
         # I think str.format() needs explicit positional arguments {0}, {1} instead of {} {} in Python versions < 3.1
-        ssh_command = '/usr/bin/ssh'
+        ssh_command = "/usr/bin/ssh"
         ssh_opts_general = "-o BatchMode=yes -o CheckHostIP=no -o StrictHostKeyChecking=no -o GSSAPIAuthentication=no -o GSSAPIDelegateCredentials=no -o PasswordAuthentication=no -o PubkeyAuthentication=yes -o PreferredAuthentications=publickey -o ConnectTimeout=10"
-        ssh_opts_user = '-l {0}'.format(self.user_name)
-        ssh_opts_key = '-i {0}'.format(self.user_sshkey)
+        ssh_opts_user = "-l {0}".format(self.user_name)
+        ssh_opts_key = "-i {0}".format(self.user_sshkey)
         ssh_opts_host = self.slurm_node
-        ssh_command += ' {0} {1} {2} {3}'.format(ssh_opts_general, ssh_opts_key, ssh_opts_user, ssh_opts_host)  # Leading space in arguments important!
+        ssh_command += " {0} {1} {2} {3}".format(
+            ssh_opts_general, ssh_opts_key, ssh_opts_user, ssh_opts_host
+        )  # Leading space in arguments important!
         return ssh_command
 
-    def get_sbatch_command(self, jobname_prefix='onlineanalysis', job_dependency='singleton', logfile_path='/dev/null'):
+    def get_sbatch_command(
+        self,
+        jobname_prefix="onlineanalysis",
+        job_dependency="singleton",
+        logfile_path="/dev/null",
+    ):
         """
         Prepare Slurm sbatch command to be run on the remote node, including all Slurm reservation parameters.
 
@@ -126,29 +155,28 @@ class Trigger:
         """
         # TODO: Taking logfile path temporarily, but this is ugly.
         # TODO: Remove function parameter here, make the analysis program log its output in a file independent of sbatch
-        sbatch_command = '/usr/bin/sbatch'
-        sbatch_opts_jobname = '{0}_{1.beamline}_{1.beamtime}'.format(jobname_prefix, self)
-        sbatch_opts_dependency = job_dependency  # only run one sbatch job (with same user+jobname) at a time
+        sbatch_command = "/usr/bin/sbatch"
+        sbatch_opts_jobname = "{0}_{1.beamline}_{1.beamtime}".format(
+            jobname_prefix, self
+        )
+        sbatch_opts_dependency = (
+            job_dependency
+        )  # only run one sbatch job (with same user+jobname) at a time
         sbatch_opts_logfile = logfile_path
         # sbatch_opts = '--partition={} --reservation={} --job-name={} --dependency={} --output={}'.format(self.analyse_trigger.slurm_partition, self.analyse_trigger.slurm_reservation, sbatch_opts_jobname, sbatch_opts_dependency, logfilepath_cluster)
-        
-        #Old version, removed singleton option
-        #sbatch_opts = '--partition={0.slurm_partition} --reservation={0.slurm_reservation} --job-name={1} --dependency={2} --output={3}'.format(
+
+        # Old version, removed singleton option
+        # sbatch_opts = '--partition={0.slurm_partition} --reservation={0.slurm_reservation} --job-name={1} --dependency={2} --output={3}'.format(
         #    self, sbatch_opts_jobname, sbatch_opts_dependency, sbatch_opts_logfile)
 
-        sbatch_opts = '--partition={0.slurm_partition} --reservation={0.slurm_reservation} --job-name={1} --output={2}'.format(
-            self, sbatch_opts_jobname, sbatch_opts_logfile)
-        
+        sbatch_opts = "--partition={0.slurm_partition} --reservation={0.slurm_reservation} --job-name={1} --output={2}".format(
+            self, sbatch_opts_jobname, sbatch_opts_logfile
+        )
 
-        
-        
-        
-        #sbatch_opts = '--partition={0.slurm_partition} --reservation={0.slurm_reservation} --job-name={1}'.format(
+        # sbatch_opts = '--partition={0.slurm_partition} --reservation={0.slurm_reservation} --job-name={1}'.format(
         #    self, sbatch_opts_jobname)
-        
-        
-        
-        sbatch_command += ' {0}'.format(sbatch_opts)
+
+        sbatch_command += " {0}".format(sbatch_opts)
         return sbatch_command
 
     def run(self, arg_list=[]):
@@ -162,32 +190,38 @@ class Trigger:
         """
         if self.trigger_method is TriggerMethod.LOCAL_BASH_SCRIPT:
             if not arg_list:
-                raise RuntimeError('Bash script not provided')
+                raise RuntimeError("Bash script not provided")
             script_file = retrieve_script_path(arg_list)
             script_args = retrieve_arg_list(arg_list)
-            if not os.path.exists(script_file):  # TODO: Check if script_file is executable
+            if not os.path.exists(
+                script_file
+            ):  # TODO: Check if script_file is executable
                 if sys.version_info < (3, 4):
-                    raise OSError('File not found: {}'.format(script_file))
-                raise FileNotFoundError('File not found: {}'.format(script_file))
+                    raise OSError("File not found: {}".format(script_file))
+                raise FileNotFoundError("File not found: {}".format(script_file))
             run_subprocess([script_file] + script_args)
         elif self.trigger_method is TriggerMethod.REMOTE_SBATCH_SCRIPT:
             if not arg_list:
-                raise RuntimeError('Sbatch script not provided')
+                raise RuntimeError("Sbatch script not provided")
             script_file = retrieve_script_path(arg_list)
             script_args = retrieve_arg_list(arg_list)
             ssh_command = self.get_ssh_command()
             sbatch_command = self.get_sbatch_command()
             # The command to run looks like this: ssh -o options hostname "sbatch sbatchoptions sbatchfile sbatchargs" &
             # The last entry in the argument list is to finish the command to run on the remote node, and push the SSH call to the background
-            run_subprocess([ssh_command, '"{0} {1}'.format(sbatch_command, script_file)] + script_args + ['" &'])
+            run_subprocess(
+                [ssh_command, '"{0} {1}'.format(sbatch_command, script_file)]
+                + script_args
+                + ['" &']
+            )
             # TODO: Check if & is needed when using subprocess.Popen with start_new_session=True
         elif self.trigger_method is TriggerMethod.SLURM_REST_API:
-            raise RuntimeError('Slurm REST API not available')
+            raise RuntimeError("Slurm REST API not available")
         else:
-            raise RuntimeError('Trigger method not known')
+            raise RuntimeError("Trigger method not known")
 
 
-def locate_metadata_file(root_dir='/gpfs'):
+def locate_metadata_file(root_dir="/gpfs"):
     """
     Get the path to the metadata JSON file for the current beamtime
 
@@ -204,22 +238,29 @@ def locate_metadata_file(root_dir='/gpfs'):
         beamtime_dirs = [
             path
             for path in [
-                os.path.join(root_dir, entry)
-                for entry in os.listdir(root_dir)]
-            if os.path.isdir(path) and not path.endswith('local')]
+                os.path.join(root_dir, entry) for entry in os.listdir(root_dir)
+            ]
+            if os.path.isdir(path) and not path.endswith("local")
+        ]
     except OSError as e:  # if root_dir does not exist
         print(e)
         if sys.version_info < (3, 4):
-            raise OSError('Root directory does not exist: ' + str(root_dir))
-        raise FileNotFoundError('Root directory does not exist: ' + str(root_dir))
+            raise OSError("Root directory does not exist: " + str(root_dir))
+        raise FileNotFoundError("Root directory does not exist: " + str(root_dir))
     metadata_files = []
-    for curr_dir in beamtime_dirs + [root_dir]:  # also check root_dir, in case the root directory contains a metadata file (e..g when root_dir = '/gpfs/current')
-        curr_dir_metadata_files = glob.glob('{0}/*metadata*.json'.format(curr_dir))
-        metadata_files.extend(curr_dir_metadata_files)  # if there happens to be more than one directory with a metadata json file - which is BAD
-    if len(metadata_files) is not 1:  # also handles the case where no metadata file is found
+    for curr_dir in beamtime_dirs + [
+        root_dir
+    ]:  # also check root_dir, in case the root directory contains a metadata file (e..g when root_dir = '/gpfs/current')
+        curr_dir_metadata_files = glob.glob("{0}/*metadata*.json".format(curr_dir))
+        metadata_files.extend(
+            curr_dir_metadata_files
+        )  # if there happens to be more than one directory with a metadata json file - which is BAD
+    if (
+        len(metadata_files) is not 1
+    ):  # also handles the case where no metadata file is found
         if sys.version_info < (3, 4):
-            raise OSError('Unique metadata JSON file not found')
-        raise FileNotFoundError('Unique metadata JSON file not found')
+            raise OSError("Unique metadata JSON file not found")
+        raise FileNotFoundError("Unique metadata JSON file not found")
     return metadata_files[0]
 
 
@@ -231,58 +272,91 @@ def parse_metadata_file(metadatafile_path):
     :returns: tuple containing variables relevant for online analysis
     """
     # DESY-IT has switched to a fully valid JSON file for the beamtime metadata file (since 2020.06.12).
-    beamline = ''  # String containing beamline name
-    beamtime = ''  # String containing beamtime or commissioning run ID
-    coredatadir = ''  # Path to directory where data is stored on the Core filesystem
-    temp_user_name = ''  # Username for temporary account allotted for online analysis on Maxwell
-    temp_user_sshkeyfile = ''  # Path to private SSH key for the temp account
-    slurm_reservation = ''  # Name of slurm reservation (changes between pre-start and start)
-    slurm_partition = ''  # Name of slurm partition
+    beamline = ""  # String containing beamline name
+    beamtime = ""  # String containing beamtime or commissioning run ID
+    coredatadir = ""  # Path to directory where data is stored on the Core filesystem
+    temp_user_name = (
+        ""
+    )  # Username for temporary account allotted for online analysis on Maxwell
+    temp_user_sshkeyfile = ""  # Path to private SSH key for the temp account
+    slurm_reservation = (
+        ""
+    )  # Name of slurm reservation (changes between pre-start and start)
+    slurm_partition = ""  # Name of slurm partition
     reserved_nodes = []  # List of allocated slurm node(s)
-    with open(metadatafile_path, 'r') as mdfile:
+    with open(metadatafile_path, "r") as mdfile:
         try:
             md = yaml.safe_load(mdfile)  # Modern YAML parsers can also load pure JSON
-            if 'beamline' in md:
-                beamline = str(md['beamline'])
-            if 'beamtimeId' in md:  # For user run
-                beamtime = str(md['beamtimeId'])
-            elif 'id' in md:  # For commissioning run
-                beamtime = str(md['id'])
-            if 'corePath' in md:
-                coredatadir = str(md['corePath'])
-            if 'onlineAnalysis' in md:  # extra parameters only available when beamtime started with --pre-start to allocate online analysis resources
-                temp_user_name = str(md['onlineAnalysis']['userAccount'])
-                temp_user_sshkeyfile = str(md['onlineAnalysis']['sshPrivateKeyPath'])
-                slurm_reservation = str(md['onlineAnalysis']['slurmReservation'])
-                slurm_partition = str(md['onlineAnalysis']['slurmPartition'])
-                reserved_nodes = md['onlineAnalysis']['reservedNodes']
+            if "beamline" in md:
+                beamline = str(md["beamline"])
+            if "beamtimeId" in md:  # For user run
+                beamtime = str(md["beamtimeId"])
+            elif "id" in md:  # For commissioning run
+                beamtime = str(md["id"])
+            if "corePath" in md:
+                coredatadir = str(md["corePath"])
+            if (
+                "onlineAnalysis" in md
+            ):  # extra parameters only available when beamtime started with --pre-start to allocate online analysis resources
+                temp_user_name = str(md["onlineAnalysis"]["userAccount"])
+                temp_user_sshkeyfile = str(md["onlineAnalysis"]["sshPrivateKeyPath"])
+                slurm_reservation = str(md["onlineAnalysis"]["slurmReservation"])
+                slurm_partition = str(md["onlineAnalysis"]["slurmPartition"])
+                reserved_nodes = md["onlineAnalysis"]["reservedNodes"]
         except:  # TODO: Don't use bare except
-            raise RuntimeError('JSON parsing of metadata file failed', metadatafile_path)
+            raise RuntimeError(
+                "JSON parsing of metadata file failed", metadatafile_path
+            )
 
     if not beamline:
-        raise RuntimeError('Beamline ID not found', metadatafile_path)
+        raise RuntimeError("Beamline ID not found", metadatafile_path)
     if not beamtime:
-        raise RuntimeError('Beamtime ID not found', metadatafile_path)
+        raise RuntimeError("Beamtime ID not found", metadatafile_path)
     if not coredatadir:
-        raise RuntimeError('Data location on remote filesystem unknown', metadatafile_path)
+        raise RuntimeError(
+            "Data location on remote filesystem unknown", metadatafile_path
+        )
     if not temp_user_name:
-        raise RuntimeError('Temporary account for online analysis unknown ', metadatafile_path)
+        raise RuntimeError(
+            "Temporary account for online analysis unknown ", metadatafile_path
+        )
     if not temp_user_sshkeyfile:
-        raise RuntimeError('SSH key for online analysis account not found', metadatafile_path)
+        raise RuntimeError(
+            "SSH key for online analysis account not found", metadatafile_path
+        )
     if not slurm_reservation:
-        raise RuntimeError('Slurm reservation for online analysis not found', metadatafile_path)
+        raise RuntimeError(
+            "Slurm reservation for online analysis not found", metadatafile_path
+        )
     if not slurm_partition:
-        raise RuntimeError('Slurm partition for online analysis not found', metadatafile_path)
+        raise RuntimeError(
+            "Slurm partition for online analysis not found", metadatafile_path
+        )
     if not reserved_nodes:
-        raise RuntimeError('Reserved node(s) for online analysis not found', metadatafile_path)
+        raise RuntimeError(
+            "Reserved node(s) for online analysis not found", metadatafile_path
+        )
     else:
-        temp_user_sshkeyfile = os.path.join(os.path.dirname(metadatafile_path), temp_user_sshkeyfile)
-        slurm_node = str(reserved_nodes[0])  # The first reserved node will do just fine as a Slurm job submission node
+        temp_user_sshkeyfile = os.path.join(
+            os.path.dirname(metadatafile_path), temp_user_sshkeyfile
+        )
+        slurm_node = str(
+            reserved_nodes[0]
+        )  # The first reserved node will do just fine as a Slurm job submission node
 
-    return beamline, beamtime, coredatadir, temp_user_name, temp_user_sshkeyfile, slurm_reservation, slurm_partition, slurm_node
+    return (
+        beamline,
+        beamtime,
+        coredatadir,
+        temp_user_name,
+        temp_user_sshkeyfile,
+        slurm_reservation,
+        slurm_partition,
+        slurm_node,
+    )
 
 
-def get_beamtime_metadata(root_dir='/gpfs'):
+def get_beamtime_metadata(root_dir="/gpfs"):
     """
     Convenience function to load partial beamtime metadata relevant for online analysis.
 
@@ -308,7 +382,9 @@ def map_local_to_remote_path(beamline_local_path, cluster_rootdir, cluster_subdi
     :returns: full path to the file, valid on the remote cluster
     """
     beamline_rootdir, beamline_filepath = beamline_local_path.split(cluster_subdir, 1)
-    return os.path.join(cluster_rootdir, cluster_subdir.lstrip('/'), beamline_filepath.lstrip('/'))
+    return os.path.join(
+        cluster_rootdir, cluster_subdir.lstrip("/"), beamline_filepath.lstrip("/")
+    )
 
 
 def name_resultfile_with_suffix(datafile_path, result_suffix):
@@ -319,9 +395,11 @@ def name_resultfile_with_suffix(datafile_path, result_suffix):
     :param result_suffix: suffix to use to generate result filename
     :returns: name of result file (Note: not the full path). The file is not guaranteed to exist at this point.
     """
-    result_filename_base, result_filename_ext = os.path.splitext(os.path.basename(datafile_path))
+    result_filename_base, result_filename_ext = os.path.splitext(
+        os.path.basename(datafile_path)
+    )
     if not result_filename_base or not result_filename_ext:
-        raise RuntimeError('File name in unexpected form')
+        raise RuntimeError("File name in unexpected form")
 
     return result_filename_base + result_suffix + result_filename_ext
 
@@ -333,9 +411,14 @@ def name_resultdir(datafile_path):
     :param datafile_path: full path to data file
     :returns: full path to results directory. The directory is not guaranteed to exist at this point.
     """
-    bl_rootdir, bl_datafile_path = datafile_path.split('raw', 1)
+    bl_rootdir, bl_datafile_path = datafile_path.split("raw", 1)
     # TODO: Is it good to have a hard-coded name for the result top directory: 'processed/onlineanalysis' ?
-    return os.path.join(bl_rootdir, 'processed', 'onlineanalysis', os.path.dirname(bl_datafile_path.lstrip('/')))
+    return os.path.join(
+        bl_rootdir,
+        "processed",
+        "onlineanalysis",
+        os.path.dirname(bl_datafile_path.lstrip("/")),
+    )
 
 
 def make_writable_dir(dir_name):
@@ -345,10 +428,16 @@ def make_writable_dir(dir_name):
     :param dir_name: path to directory to be created
     :returns: None
     """
-    if not os.path.exists(dir_name):  # Python >= 3.2 call to os.makedirs() takes optional argument 'exists_ok' which makes this current check unnecessary
+    if not os.path.exists(
+        dir_name
+    ):  # Python >= 3.2 call to os.makedirs() takes optional argument 'exists_ok' which makes this current check unnecessary
         # os.makedirs(dir_name, mode=0o777, exist_ok=True)  # Default mode of leaf directory is supposed to 0o77, but it may be ignored, depending on the umask. Set the mode explicitly later
-        os.makedirs(dir_name)  # Default mode of leaf directory is supposed to 0o77, but it may be ignored, depending on the umask. Set the mode explicitly to be sure
-        os.chmod(dir_name, 0o777)  # In case the results directory is created with permissions that forbid the beamtime account from writing to it. Tests show this does indeed happen, and is probably due to the umask inherited from the Macroserver executing the onlineanalysis module functions
+        os.makedirs(
+            dir_name
+        )  # Default mode of leaf directory is supposed to 0o77, but it may be ignored, depending on the umask. Set the mode explicitly to be sure
+        os.chmod(
+            dir_name, 0o777
+        )  # In case the results directory is created with permissions that forbid the beamtime account from writing to it. Tests show this does indeed happen, and is probably due to the umask inherited from the Macroserver executing the onlineanalysis module functions
 
 
 def run_subprocess(arg_list):
@@ -358,28 +447,48 @@ def run_subprocess(arg_list):
     :param arg_list: list comprising the command (+ arguments) to be run
     :returns: None
     """
-    flattened_arg_list = list(flatten_arg_list(arg_list))  # In case there are lists inside arg_list, and not just 'plain' entries
-    stringified_arg_list = [str(entry) for entry in flattened_arg_list]  # No input sanitization done here
+    flattened_arg_list = list(
+        flatten_arg_list(arg_list)
+    )  # In case there are lists inside arg_list, and not just 'plain' entries
+    stringified_arg_list = [
+        str(entry) for entry in flattened_arg_list
+    ]  # No input sanitization done here
     try:
-        if sys.version_info >= (3, 3):  # subprocess.DEVNULL appears in 3.3, start_new_session in 3.2
-            subprocess.Popen(stringified_arg_list, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)  # Needs Python 3.3+
+        if sys.version_info >= (
+            3,
+            3,
+        ):  # subprocess.DEVNULL appears in 3.3, start_new_session in 3.2
+            subprocess.Popen(
+                stringified_arg_list,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )  # Needs Python 3.3+
         elif sys.version_info >= (2, 7):
-            with open(os.devnull, 'w') as DEVNULL:
-                subprocess.Popen(stringified_arg_list, stdout=DEVNULL, stderr=DEVNULL, preexec_fn=os.setsid)  # Works in Python 2.7, can potentially deadlock if many threads in application
+            with open(os.devnull, "w") as DEVNULL:
+                subprocess.Popen(
+                    stringified_arg_list,
+                    stdout=DEVNULL,
+                    stderr=DEVNULL,
+                    preexec_fn=os.setsid,
+                )  # Works in Python 2.7, can potentially deadlock if many threads in application
         else:
-            print('Python version too old. No process run.', file=sys.stderr)
+            print("Python version too old. No process run.", file=sys.stderr)
     except ValueError as e:
         print(e, file=sys.stderr)
-        print('Did not trigger analysis - invalid args to subprocess.Popen()', file=sys.stderr)
+        print(
+            "Did not trigger analysis - invalid args to subprocess.Popen()",
+            file=sys.stderr,
+        )
     except FileNotFoundError as e:
         print(e, file=sys.stderr)
-        print('Did not trigger analysis - no trigger script found', file=sys.stderr)
+        print("Did not trigger analysis - no trigger script found", file=sys.stderr)
     except OSError as e:
         print(e, file=sys.stderr)
-        print('Did not trigger analysis', file=sys.stderr)
+        print("Did not trigger analysis", file=sys.stderr)
     except IOError as e:
         print(e, file=sys.stderr)
-        print('Did not trigger analysis', file=sys.stderr)
+        print("Did not trigger analysis", file=sys.stderr)
 
 
 def run_slurm():
@@ -387,7 +496,7 @@ def run_slurm():
     Use Slurm REST API to submit a batch job directly from the local machine.
     :returns: None
     """
-    raise RuntimeError('No implementation exists')
+    raise RuntimeError("No implementation exists")
 
 
 def retrieve_script_path(arg_list):
@@ -407,7 +516,7 @@ def retrieve_script_path(arg_list):
     # 3. ['script_file', [arg1, arg2, ..., argN]]
     # 4. ['script_file', arg1, arg2, ..., argN]
     if not arg_list:
-        raise RuntimeError('Empty list input not supported')
+        raise RuntimeError("Empty list input not supported")
     script_file = str(arg_list[0]).split(None, 1)[0]
 
     return script_file
@@ -429,13 +538,19 @@ def retrieve_arg_list(arg_list):
     # 3. ['script_file', [arg1, arg2, ..., argN]]
     # 4. ['script_file', arg1, arg2, ..., argN]
     if not arg_list:
-        raise RuntimeError('Empty list input not supported')
+        raise RuntimeError("Empty list input not supported")
     if len(arg_list) == 1:  # Cases 1. and 2.
         if arg_list[0] == retrieve_script_path(arg_list):  # Case 1.
             script_args = []
         else:  # Case 2.
-            script_args = str(arg_list[0]).split()[1:]  # BEWARE!! Wrong if script_file has spaces
-    elif len(arg_list) == 2 and isinstance(arg_list[0], str) and isinstance(arg_list[1], list):  # Case 3, probably most commonly occurring
+            script_args = str(arg_list[0]).split()[
+                1:
+            ]  # BEWARE!! Wrong if script_file has spaces
+    elif (
+        len(arg_list) == 2
+        and isinstance(arg_list[0], str)
+        and isinstance(arg_list[1], list)
+    ):  # Case 3, probably most commonly occurring
         script_args = arg_list[1]
     else:  # Case 4.
         script_args = arg_list[1:]
@@ -453,9 +568,10 @@ def flatten_arg_list(arg_list):
     :returns: a flattened list only containing 'scalar' (i.e., non-list) entries
     """
     for maybe_list in arg_list:
-        if isinstance(maybe_list, list) and not isinstance(maybe_list, str):  # May not work for non-latin encodings
+        if isinstance(maybe_list, list) and not isinstance(
+            maybe_list, str
+        ):  # May not work for non-latin encodings
             for sub_list in flatten_arg_list(maybe_list):
                 yield sub_list
         else:
             yield maybe_list
-
