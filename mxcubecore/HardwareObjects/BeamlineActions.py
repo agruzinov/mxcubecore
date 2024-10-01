@@ -1,6 +1,4 @@
 import sys
-import typing
-import enum
 import ast
 import importlib
 import operator
@@ -9,9 +7,17 @@ from mxcubecore.BaseHardwareObjects import HardwareObject
 from mxcubecore.TaskUtils import task
 from mxcubecore.CommandContainer import CommandObject
 from mxcubecore.utils.conversion import camel_to_snake
+from mxcubecore import HardwareRepository as HWR
+
+from mxcubecore.CommandContainer import (
+    CommandObject,
+    TWO_STATE_COMMAND_T,
+    ARGUMENT_TYPE_LIST,
+)
 
 import gevent
 import logging
+
 
 class ControllerCommand(CommandObject):
     def __init__(self, name, cmd=None, username=None, klass=None):
@@ -20,7 +26,7 @@ class ControllerCommand(CommandObject):
         if not cmd:
             self._cmd = klass()
         else:
-            self._cmd=cmd
+            self._cmd = cmd
 
         self._cmd_execution = None
         self.type = "CONTROLLER"
@@ -35,11 +41,16 @@ class ControllerCommand(CommandObject):
 
     @task
     def __call__(self, *args, **kwargs):
+        """Call the command"""
         self.emit("commandBeginWaitReply", (str(self.name()),))
         self._cmd_execution = gevent.spawn(self._cmd, *args, **kwargs)
         self._cmd_execution.link(self._cmd_done)
 
     def _cmd_done(self, cmd_execution):
+        """Handle the command execution.
+        Args:
+            (obj): Command execution greenlet.
+        """
         try:
             try:
                 res = cmd_execution.get()
@@ -56,14 +67,16 @@ class ControllerCommand(CommandObject):
                 else:
                     self.emit("commandReplyArrived", (str(self.name()), res))
         finally:
-            self.emit("commandReady",  (str(self.name()), ""))
+            self.emit("commandReady", (str(self.name()), ""))
 
     def abort(self):
+        """Abort the execution."""
         if self._cmd_execution and not self._cmd_execution.ready():
             self._cmd_execution.kill()
 
     def value(self):
         return None
+
 
 class HWObjActuatorCommand(CommandObject):
     """Class for two state hardware objects"""
@@ -74,6 +87,7 @@ class HWObjActuatorCommand(CommandObject):
         self.type = TWO_STATE_COMMAND_T
         self.argument_type = ARGUMENT_TYPE_LIST
         self._hwobj.connect("valueChanged", self._cmd_done)
+        self._running = False
 
     def _get_action(self):
         """Return which action has to be executed.
@@ -92,6 +106,7 @@ class HWObjActuatorCommand(CommandObject):
         Args: None
         Kwargs: None
         """
+        self._running = True
         self.emit("commandBeginWaitReply", (str(self.name()),))
         value = self._get_action()
         self._hwobj.set_value(value, timeout=60)
@@ -109,8 +124,10 @@ class HWObjActuatorCommand(CommandObject):
         else:
             if isinstance(res, gevent.GreenletExit):
                 self.emit("commandFailed", (str(self.name()),))
-            else:
+            elif self._running:
                 self.emit("commandReplyArrived", (str(self.name()), res))
+
+        self._running = False
 
     def value(self):
         """Return the current command vaue.
@@ -127,21 +144,26 @@ class HWObjActuatorCommand(CommandObject):
         return value
 
 
-class CommandDescription(typing.NamedTuple):
-    name: str
-    task: typing.Any
-    result: typing.Any
-    messages: list
-
 class AnnotatedCommand(CommandObject):
     def __init__(self, beamline_action_ho, name, cmd_name):
         self._beamline_action_ho = beamline_action_ho
         self._name = name
         self._cmd_name = cmd_name
         self._value = ""
+        self._last_result = None
+        self._messages = []
+        self.task = None
 
     def get_value(self):
         return self._value
+
+    def set_last_result(self, result):
+        self._last_result = result
+
+    @property
+    def cmd_name(self):
+        return self._cmd_name
+
 
 class BeamlineActions(HardwareObject):
     def __init__(self, *args):
@@ -149,23 +171,22 @@ class BeamlineActions(HardwareObject):
         self._annotated_commands = []
         self._annotated_command_dict = {}
         self._command_list = []
-        self._current_command = CommandDescription("", None, None, [])
-        self._command_log = []
+        self._current_command = None
 
     def _get_command_object_class(self, path_str):
         parts = path_str.split(".")
 
-        _module_name = "mxcubecore."+".".join(parts[:-1])
+        _module_name = "mxcubecore." + ".".join(parts[:-1])
         _cls_name = parts[-1]
         self._annotated_commands.append(_cls_name)
-        
-        # Assume import from current module if only class name givien (no module)
+
+        # assume import from current module if only class name given (no module)
         if len(parts) == 1:
             _cls = getattr(sys.modules[__name__], _cls_name)
         else:
             _mod = importlib.import_module(_module_name)
             _cls = getattr(_mod, _cls_name)
-        
+
         return _cls
 
     def init(self):
@@ -175,9 +196,12 @@ class BeamlineActions(HardwareObject):
 
         for command in command_list:
             attrname = camel_to_snake(command["command"].split(".")[-1])
-            
+
             if hasattr(self, attrname):
-                msg = "Command with name %s already exists" % command["command"].split(".")[-1]
+                msg = (
+                    "Command with name %s already exists"
+                    % command["command"].split(".")[-1]
+                )
                 logging.getLogger("HWR").warning(msg)
                 continue
 
@@ -195,7 +219,9 @@ class BeamlineActions(HardwareObject):
                     _cmd_obj = ControllerCommand(command["name"], cmd, command["name"])
                 except AttributeError:
                     _cls = self._get_command_object_class(command["command"])
-                    _cmd_obj = ControllerCommand(command["name"], None, command["name"], klass=_cls)
+                    _cmd_obj = ControllerCommand(
+                        command["name"], None, command["name"], klass=_cls
+                    )
 
                 self._command_list.append(_cmd_obj)
                 setattr(self, attrname, _cmd_obj)
@@ -211,52 +237,95 @@ class BeamlineActions(HardwareObject):
 
     def get_annotated_command(self, name):
         return self._annotated_command_dict[name]
-    
+
     def get_annotated_commands(self):
         return list(self._annotated_command_dict.values())
 
+    def _execute_annotated_command(self, name, args):
+        cmd = getattr(self, name, None)
+        self._annotated_command_dict[name].emit("commandBeginWaitReply", name)
+
+        _model = self.pydantic_model[name](**args)
+        _all_child_models = []
+
+        for _key in _model.dict().keys():
+            _all_child_models.append(getattr(_model, _key))
+
+        _t = gevent.spawn(cmd, *_all_child_models)
+        _t.link(self._command_done)
+
+        self._current_command = cmd.__self__
+        self._current_command.task = _t
+
     def get_commands(self):
         return self._command_list
+
+    def _execute_command(self, name, args):
+        try:
+            cmds = self.get_commands()
+        except Exception:
+            cmds = []
+
+        for cmd in cmds:
+            if cmd.name() == name:
+                try:
+                    cmd.emit("commandBeginWaitReply", name)
+                    logging.getLogger("user_level_log").info(
+                        "Starting %s(%s)",
+                        cmd.name(),
+                        ", ".join(map(str, args)),
+                    )
+                    cmd(*args)
+                except Exception as ex:
+                    err = str(sys.exc_info()[1])
+                    raise Exception(str(err)) from ex
 
     def execute_command(self, name, args):
         cmd = getattr(self, name, None)
 
         if cmd:
-            self._annotated_command_dict[name].emit("commandBeginWaitReply", name)
-            _t = gevent.spawn(cmd, **args)
-            _t.link(self._command_done)
-            
-            self._current_command = CommandDescription(name, _t, None, [])
-            self._command_log.append(self._current_command)
+            self._execute_annotated_command(name, args)
+        else:
+            self._execute_command(name, args)
 
     def _command_done(self, greenlet):
-        cmd_obj = self._annotated_command_dict[self._current_command.name]
+        cmd_obj = self._annotated_command_dict[self._current_command.cmd_name]
         result = ""
-        
+
         try:
-            try:
-                result = greenlet.get()
-            except Exception:
-                logging.getLogger("HWR").exception(
-                    "%s: execution failed", self._current_command.name
-                )
-                cmd_obj.emit("commandFailed", (self._current_command.name,))
+            result = greenlet.get()
+        except Exception:
+            logging.getLogger("HWR").exception(
+                "%s: execution failed", self._current_command.cmd_name
+            )
+            cmd_obj.emit("commandFailed", (self._current_command.cmd_name,))
+        else:
+            self._current_command.set_last_result(result)
+            if isinstance(result, gevent.GreenletExit):
+                # command aborted
+                cmd_obj.emit("commandFailed", (self._current_command.cmd_name,))
+                result = ""
             else:
-                if isinstance(result, gevent.GreenletExit):
-                    # command aborted
-                    cmd_obj.emit("commandFailed", (self._current_command.name,))
-                else:
-                    self._current_command.result = result
-                    cmd_obj.emit("commandReplyArrived", (self._current_command.name, result))
+                cmd_obj.emit(
+                    "commandReplyArrived", (self._current_command.cmd_name, result)
+                )
         finally:
-            cmd_obj.emit("commandReady", (
-                self._current_command.name,
-                self._current_command.result)
+            cmd_obj.emit(
+                "commandReady",
+                (self._current_command.cmd_name, result),
             )
 
-            self._current_command = CommandDescription("", None, None, [])
+            self._current_command = None
 
     def abort_command(self, name):
-        cmd_obj = self._annotated_command_dict[self._current_command.name]
-        self._current_command.task.kill()
-
+        if (
+            self._current_command
+            and self._current_command.cmd_name in self._annotated_command_dict
+        ):
+            self._annotated_command_dict[self._current_command.cmd_name]
+            self._current_command.task.kill()
+        else:
+            for cmd in self.get_commands():
+                if cmd.name() == name:
+                    cmd.abort()
+                    break

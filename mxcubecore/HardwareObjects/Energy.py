@@ -1,8 +1,7 @@
-import sys
 import logging
 import math
 import gevent
-from mxcubecore.BaseHardwareObjects import Equipment
+from mxcubecore.BaseHardwareObjects import HardwareObject
 
 """
 Example xml file:
@@ -22,7 +21,7 @@ If used, the controller should have method moveEnergy.
 """
 
 
-class Energy(Equipment):
+class Energy(HardwareObject):
     def init(self):
         self.ready_event = gevent.event.Event()
         self.energy_motor = None
@@ -173,11 +172,11 @@ class Energy(Equipment):
         current_en = self.get_value()
         pos = math.fabs(current_en - energy)
         if pos < 0.001:
-            logging.getLogger("user_level_log").debug(
+            logging.getLogger("user_level_log").info(
                 "Energy: already at %g, not moving", energy
             )
         else:
-            logging.getLogger("user_level_log").debug(
+            logging.getLogger("user_level_log").info(
                 "Energy: moving energy to %g", energy
             )
             if pos > 0.02:

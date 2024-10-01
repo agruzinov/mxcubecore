@@ -14,7 +14,7 @@ Vicente Rey - add support for ISARA Model
 import logging
 
 from mxcubecore.TaskUtils import task
-from mxcubecore.BaseHardwareObjects import Equipment
+from mxcubecore.BaseHardwareObjects import HardwareObject
 
 import gevent
 import time
@@ -47,7 +47,7 @@ TOOL_TO_STR = {
 }
 
 
-class CatsMaint(Equipment):
+class CatsMaint(HardwareObject):
 
     __TYPE__ = "CATS"
     NO_OF_LIDS = 3
@@ -58,7 +58,7 @@ class CatsMaint(Equipment):
     """
 
     def __init__(self, *args, **kwargs):
-        Equipment.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         self._state = None
         self._running = None
@@ -673,21 +673,21 @@ class CatsMaint(Equipment):
 
     def get_global_state(self):
         """
-           Update clients with a global state that
-           contains different:
+        Update clients with a global state that
+        contains different:
 
-           - first param (state_dict):
-               collection of state bits
+        - first param (state_dict):
+            collection of state bits
 
-           - second param (cmd_state):
-               list of command identifiers and the
-               status of each of them True/False
-               representing whether the command is
-               currently available or not
+        - second param (cmd_state):
+            list of command identifiers and the
+            status of each of them True/False
+            representing whether the command is
+            currently available or not
 
-           - message
-               a message describing current state information
-               as a string
+        - message
+            a message describing current state information
+            as a string
         """
         _ready = str(self._state) in ("READY", "ON")
 
@@ -732,10 +732,10 @@ class CatsMaint(Equipment):
         return state_dict, cmd_state, message
 
     def get_cmd_info(self):
-        """ return information about existing commands for this object
-           the information is organized as a list
-           with each element contains
-           [ cmd_name,  display_name, category ]
+        """return information about existing commands for this object
+        the information is organized as a list
+        with each element contains
+        [ cmd_name,  display_name, category ]
         """
         """ [cmd_id, cmd_display_name, nb_args, cmd_category, description ] """
         cmd_list = [

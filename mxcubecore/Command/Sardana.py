@@ -18,24 +18,27 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with MXCuBE. If not, see <http://www.gnu.org/licenses/>.
 
+
+"""Sardana Control System  """
+
 from __future__ import absolute_import
 
 import logging
 import os
+
 # import time
 # import types
 from mxcubecore.dispatcher import saferef
 
 import gevent
 from gevent.event import Event
-from gevent import monkey
 
 try:
     import Queue as queue
 except ImportError:
     import queue
 
-gevent_version = list(map(int, gevent.__version__.split('.')))
+gevent_version = list(map(int, gevent.__version__.split(".")))
 
 
 from mxcubecore.CommandContainer import (
@@ -44,10 +47,15 @@ from mxcubecore.CommandContainer import (
     ConnectionError,
 )
 
-from PyTango import DevFailed, ConnectionFailed
-import PyTango
+# This is a site specific module where some of the dependencies might not be capture by the ``pyproject.toml`` during installation
 
-# from mxcubecore.TaskUtils import task
+try:
+    from PyTango import DevFailed, ConnectionFailed
+    import PyTango
+except Exception:
+    logging.getLogger("HWR").warning("Pytango is not available in this computer.")
+
+#
 
 try:
     from sardana.taurus.core.tango.sardana import registerExtensions
@@ -55,8 +63,6 @@ try:
     import taurus
 except Exception:
     logging.getLogger("HWR").warning("Sardana is not available in this computer.")
-
-monkey.patch_all(thread=False, subprocess=False)
 
 
 __copyright__ = """ Copyright © 2010 - 2020 by MXCuBE Collaboration """
@@ -103,6 +109,8 @@ class AttributeEvent:
 
 
 class SardanaObject(object):
+    """Sardana Object"""
+
     _eventsQueue = queue.Queue()
     _eventReceivers = {}
 
@@ -122,7 +130,8 @@ class SardanaObject(object):
         SardanaObject._eventsProcessingTimer.send()
 
 
-class SardanaMacro(CommandObject, SardanaObject):
+class SardanaMacro(CommandObject, SardanaObject, ChannelObject):
+    """Sardana macro"""
 
     macroStatusAttr = None
     INIT, STARTED, RUNNING, DONE = range(4)
@@ -134,14 +143,16 @@ class SardanaMacro(CommandObject, SardanaObject):
         self.macro_format = macro
         self.doorname = doorname
         self.door = None
-        self.init_device()
+        self.id_result = -1
         self.macrostate = SardanaMacro.INIT
         self.doorstate = None
         self.t0 = 0
+        self.init_device()
 
     def init_device(self):
         self.door = Device(self.doorname)
         self.door.set_timeout_millis(10000)
+        self.doorstate = self.door.state.name.upper()
 
         #
         # DIRTY FIX to make compatible taurus listeners and existence of Tango channels/commands
@@ -157,6 +168,11 @@ class SardanaMacro(CommandObject, SardanaObject):
         if self.macroStatusAttr is None:
             self.macroStatusAttr = self.door.getAttribute("State")
             self.macroStatusAttr.addListener(self.object_listener)
+
+    def result_callback(self, received_event):
+        val = received_event.attr_value.value
+        if val is not None:
+            self.emit("macroResultUpdated", received_event.attr_value.value)
 
     def __call__(self, *args, **kwargs):
 
@@ -191,7 +207,10 @@ class SardanaMacro(CommandObject, SardanaObject):
             import time
 
             self.t0 = time.time()
-            if self.doorstate in ["ON", "ALARM"]:
+            if self.doorstate in ["ON", "ALARM", "READY"]:
+                self.id_result = self.door.subscribe_event(
+                    "Result", PyTango.EventType.CHANGE_EVENT, self.result_callback
+                )
                 self.door.runMacro(fullcmd.split())
                 self.macrostate = SardanaMacro.STARTED
                 self.emit("commandBeginWaitReply", (str(self.name()),))
@@ -235,6 +254,8 @@ class SardanaMacro(CommandObject, SardanaObject):
         return
 
     def update(self, event):
+        """update the macro command status: ``commandCanExecute``, ``commandReady``, ``commandNotReady``, ``commandReplyArrive``, ``commandReplyAbort`` and ``commandFailed``"""
+
         data = event.event[2]
 
         try:
@@ -311,6 +332,8 @@ class SardanaMacro(CommandObject, SardanaObject):
 
 
 class SardanaCommand(CommandObject):
+    """SardanaCommand"""
+
     def __init__(self, name, command, taurusname=None, username=None, **kwargs):
         CommandObject.__init__(self, name, username, **kwargs)
 
@@ -368,10 +391,11 @@ class SardanaCommand(CommandObject):
 
 
 class SardanaChannel(ChannelObject, SardanaObject):
+    """Creates a Sardana Channel"""
+
     def __init__(
         self, name, attribute_name, username=None, uribase=None, polling=None, **kwargs
     ):
-
         super(SardanaChannel, self).__init__(name, username, **kwargs)
 
         class ChannelInfo(object):
@@ -413,16 +437,19 @@ class SardanaChannel(ChannelObject, SardanaObject):
 
         # read information
         try:
-            if taurus.Release.version_info[0] == 3:
+            if int(taurus.Release.version[0]) == 3:
                 ranges = self.attribute.getConfig().getRanges()
                 if ranges is not None and ranges[0] != "Not specified":
                     self.info.minval = float(ranges[0])
                 if ranges is not None and ranges[-1] != "Not specified":
                     self.info.maxval = float(ranges[-1])
-            elif taurus.Release.version_info[0] > 3:  # taurus 4 and beyond
-                minval, maxval = self.attribute.ranges()
-                self.info.minval = minval.magnitude
-                self.info.maxval = maxval.magnitude
+            elif int(taurus.Release.version[0]) > 3:  # taurus 4 and beyond
+                minval, maxval = self.attribute.getRange()
+                if minval is not None:
+                    self.info.minval = minval.magnitude
+                if maxval is not None:
+                    self.info.maxval = maxval.magnitude
+
         except Exception:
             import traceback
 
@@ -453,11 +480,9 @@ class SardanaChannel(ChannelObject, SardanaObject):
 
     def get_info(self):
         try:
-            b = dir(self.attribute)
-            (
-                self.info.minval,
-                self.info.maxval,
-            ) = self.attribute._TangoAttribute__attr_config.get_limits()
+            limits = self.attribute.getLimits()
+            self.info.minval = limits[0].magnitude
+            self.info.maxval = limits[1].magnitude
         except Exception:
             import traceback
 

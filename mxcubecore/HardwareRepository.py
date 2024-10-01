@@ -34,6 +34,8 @@ import sys
 import os
 import time
 import importlib
+import traceback
+from typing import Union, TYPE_CHECKING
 from datetime import datetime
 
 from ruamel.yaml import YAML
@@ -43,20 +45,15 @@ from mxcubecore.dispatcher import dispatcher
 from mxcubecore import BaseHardwareObjects
 from mxcubecore import HardwareObjectFileParser
 
-# Save copy of original version of socket, before gevent monkey-patching
-# Used e.g. in GphlWorkflowConnection, to suport py4j
-# DO NOT DELETE
-import socket as original_socket
-# Remove from system dictionaries, to avoid later overwriting of original_socket
-del sys.modules["socket"]
-del sys.modules["_socket"]
+if TYPE_CHECKING:
+    from mxcubecore.BaseHardwareObjects import HardwareObject
 
 # If you want to write out copies of the file, use typ="rt" instead
-# pure=True uses yaml version 1.2, with fewere gotchas for strange type conversions
+# pure=True uses yaml version 1.2, with fewer gotchas for strange type conversions
 yaml = YAML(typ="safe", pure=True)
 # The following are not needed for load, but define the default style.
 yaml.default_flow_style = False
-yaml.indent(mapping=4, sequence=4, offset=2)
+yaml.indent(mapping=2, sequence=4, offset=2)
 
 
 __copyright__ = """ Copyright © 2010 - 2020 by MXCuBE Collaboration """
@@ -92,7 +89,7 @@ def load_from_yaml(configuration_file, role, _container=None, _table=None):
     start_time = time.time()
     msg0 = ""
     result = None
-    class_name = None
+    class_name = "None"
 
     # Get full path for configuration file
     if _instance is None:
@@ -112,7 +109,7 @@ def load_from_yaml(configuration_file, role, _container=None, _table=None):
             if _container:
                 msg0 = "No '_initialise_class' tag"
             else:
-                # at top lavel we want to get the actual error
+                # at top level we want to get the actual error
                 raise ValueError(
                     "%s file lacks  '_initialise_class' tag" % configuration_file
                 )
@@ -123,7 +120,7 @@ def load_from_yaml(configuration_file, role, _container=None, _table=None):
             if _container:
                 msg0 = "No 'class' tag"
             else:
-                # at top lavel we want to get the actual error
+                # at top level we want to get the actual error
                 raise ValueError("%s file lacks  'class' tag" % configuration_file)
 
     if not msg0:
@@ -135,8 +132,11 @@ def load_from_yaml(configuration_file, role, _container=None, _table=None):
             if _container:
                 msg0 = "Error importing class"
                 class_name = class_import
+                print(
+                    "Encountered Exception (continuing):\n%s" % traceback.format_exc()
+                )
             else:
-                # at top lavel we want to get the actual error
+                # at top level we want to get the actual error
                 raise
 
     if not msg0:
@@ -146,12 +146,15 @@ def load_from_yaml(configuration_file, role, _container=None, _table=None):
         except Exception:
             if _container:
                 msg0 = "Error instantiating %s" % cls.__name__
+                print(
+                    "Encountered Exception (continuing):\n%s" % traceback.format_exc()
+                )
             else:
-                # at top lavel we want to get the actual error
+                # at top level we want to get the actual error
                 raise
 
     if _container is None:
-        # We are loading the beamline object into HardwarePepository
+        # We are loading the beamline object into HardwareRepository
         # and want the link to be set before _init or content loading
         beamline = result
 
@@ -163,11 +166,11 @@ def load_from_yaml(configuration_file, role, _container=None, _table=None):
             if _container:
                 msg0 = "Error in %s._init()" % cls.__name__
             else:
-                # at top lavel we want to get the actual error
+                # at top level we want to get the actual error
                 raise
 
     if not msg0:
-        # Recursively load contained objects (of any type that the system can supprt)
+        # Recursively load contained objects (of any type that the system can support)
         _objects = configuration.pop("_objects", {})
         if _objects:
             load_time = 1000 * (time.time() - start_time)
@@ -178,7 +181,7 @@ def load_from_yaml(configuration_file, role, _container=None, _table=None):
             msg0 = "Done loading contents"
         for role1, config_file in _objects.items():
             fname, fext = os.path.splitext(config_file)
-            if fext == ".yml":
+            if fext in (".yaml", ".yml"):
                 load_from_yaml(
                     config_file, role=role1, _container=result, _table=_table
                 )
@@ -230,7 +233,7 @@ def load_from_yaml(configuration_file, role, _container=None, _table=None):
             if _container:
                 msg0 = "Error in %s.init()" % cls.__name__
             else:
-                # at top lavel we want to get the actual error
+                # at top level we want to get the actual error
                 raise
 
     load_time = 1000 * (time.time() - start_time)
@@ -266,7 +269,7 @@ def set_user_file_directory(user_file_directory):
 
 
 def init_hardware_repository(configuration_path):
-    """Initialise hardweare repository - must be run at program start
+    """Initialise hardware repository - must be run at program start
 
     Args:
         configuration_path (str): PATHSEP-separated string of directories
@@ -283,9 +286,10 @@ def init_hardware_repository(configuration_path):
             "init_hardware_repository called on already initialised repository"
         )
     if not configuration_path:
-        logging.getLogger("HWR").error("Unable to initialize hardware repository. No cofiguration path passed.")
+        logging.getLogger("HWR").error(
+            "Unable to initialize hardware repository. No configuration path passed."
+        )
         return
-
 
     # If configuration_path is a string of combined paths, split it up
     lookup_path = [
@@ -300,6 +304,13 @@ def init_hardware_repository(configuration_path):
     _instance = __HardwareRepositoryClient(configuration_path)
     _instance.connect()
     beamline = load_from_yaml(BEAMLINE_CONFIG_FILE, role="beamline")
+    beamline._hwr_init_done()
+
+
+def uninit_hardware_repository():
+    global _instance, beamline
+    _instance = None
+    beamline = None
 
 
 def get_hardware_repository():
@@ -320,7 +331,7 @@ def get_hardware_repository():
 class __HardwareRepositoryClient:
     """Hardware Repository class
 
-    Warning -- should not be instanciated directly ;
+    Warning -- should not be instantiated directly ;
     call the module's level get_hardware_repository() function instead
     """
 
@@ -406,9 +417,7 @@ class __HardwareRepositoryClient:
             file_name = (
                 hwobj_name[1:] if hwobj_name.startswith(os.path.sep) else hwobj_name
             )
-            file_path = (
-                os.path.join(xml_files_path, file_name) + os.path.extsep + "xml"
-            )
+            file_path = os.path.join(xml_files_path, file_name) + os.path.extsep + "xml"
             if os.path.exists(file_path):
                 try:
                     xml_data = open(file_path, "r").read()
@@ -437,6 +446,7 @@ class __HardwareRepositoryClient:
             else:
                 if hwobj_instance is not None:
                     self.xml_source[hwobj_name] = xml_data
+
                     dispatcher.send("hardwareObjectLoaded", hwobj_name, self)
 
                     def hardwareObjectDeleted(name=hwobj_instance.name()):
@@ -628,16 +638,16 @@ class __HardwareRepositoryClient:
 
         return result
 
-    def get_hardware_object(self, object_name):
-        """Return a Hardware Object given its name
+    def get_hardware_object(self, object_name: str) -> Union["HardwareObject", None]:
+        """Return a Hardware Object given its name.
 
         If the object is not in the Hardware Repository, try to load it.
 
-        Parameters :
-          object_name -- the name of the Hardware Object
+        Args:
+            object_name (str): The name of the Hardware Object
 
-        Return :
-          the required Hardware Object
+        Returns:
+            Union[HardwareObject, None]: The required Hardware Object
         """
 
         if not object_name:
@@ -672,19 +682,6 @@ class __HardwareRepositoryClient:
     def get_procedure(self, procedure_name):
         """Return a Procedure given its name (see get_hardware_object())"""
         return self.get_hardware_object(procedure_name)
-
-    # def get_connection(self, connection_name):
-    #     """Return the Connection object for a Spec connection, given its name
-    #
-    #     Parameters :
-    #       connectionName -- a Spec version name ('host:port' string)
-    #
-    #     Return :
-    #       the corresponding SpecConnection object
-    #     """
-    #     connections_manager = SpecConnectionsManager.SpecConnectionsManager()
-    #
-    #     return connections_manager.get_connection(connection_name)
 
     def is_device(self, name):
         """Check if a Hardware Object is a Device
@@ -784,7 +781,7 @@ class __HardwareRepositoryClient:
                             "macro or function": str(cmd.command),
                         }
                     elif cmd.__class__.__name__ == "TacoCommand":
-                        dd = {"type": "taco", "device": cmd.deviceName}
+                        dd = {"type": "taco", "device": cmd.device_name}
 
                         try:
                             dd["imported ?"] = "yes" if cmd.device.imported else "no"
@@ -797,7 +794,7 @@ class __HardwareRepositoryClient:
                     elif cmd.__class__.__name__ == "TangoCommand":
                         d["commands"][cmd.userName()] = {
                             "type": "tango",
-                            "device": cmd.deviceName,
+                            "device": cmd.device_name,
                             "imported ?": (
                                 "no, invalid Tango device"
                                 if cmd.device is None
@@ -823,11 +820,11 @@ class __HardwareRepositoryClient:
                     elif chan.__class__.__name__ == "TangoChannel":
                         d["channels"][chan.userName()] = {
                             "type": "tango",
-                            "device": chan.deviceName,
+                            "device": chan.device_name,
                             "imported ?": chan.device is not None
                             and "yes"
                             or "no, invalid Tango device or attribute name",
-                            "attribute": str(chan.attributeName),
+                            "attribute": str(chan.attribute_name),
                         }
 
             if "SpecMotorA" in [

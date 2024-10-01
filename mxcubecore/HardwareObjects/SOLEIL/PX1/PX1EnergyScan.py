@@ -27,7 +27,7 @@ from mxcubecore.TaskUtils import task, cleanup
 from xabs_lib import McMaster
 from mxcubecore.Command.Tango import DeviceProxy
 
-from mxcubecore.BaseHardwareObjects import Equipment
+from mxcubecore.BaseHardwareObjects import HardwareObject
 from mxcubecore import HardwareRepository as HWR
 
 
@@ -46,7 +46,7 @@ class PX1EnergyScan(AbstractEnergyScan, Equipment):
 
     def __init__(self, name):
         AbstractEnergyScan.__init__(self)
-        Equipment.__init__(self, name)
+        super().__init__(name)
 
         self.scanning = False
         self.stopping = False
@@ -266,7 +266,7 @@ class PX1EnergyScan(AbstractEnergyScan, Equipment):
         self.scan_info["beamSizeHorizontal"] = size_hor
         self.scan_info["beamSizeVertical"] = size_ver
 
-    def startEnergyScan(
+    def start_energy_scan(
         self, element, edge, directory, prefix, session_id=None, blsample_id=None
     ):
 
@@ -395,13 +395,13 @@ class PX1EnergyScan(AbstractEnergyScan, Equipment):
             self.emit("energyScanFinished", (self.scan_info,))
             self.emit("progressStop", ())
 
-    def doChooch(
+    def do_chooch(
         self, elt, edge, scan_directory, archive_directory, prefix, run_number=None
     ):
 
         symbol = "_".join((elt, edge))
 
-        self.log.info("EnergyScan. executing doChooch")
+        self.log.info("EnergyScan. executing do_chooch")
 
         scan_file_prefix = os.path.join(scan_directory, prefix)
         archive_file_prefix = os.path.join(archive_directory, prefix)

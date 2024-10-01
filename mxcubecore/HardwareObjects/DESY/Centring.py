@@ -1,3 +1,4 @@
+# encoding: utf-8
 #
 #  Project: MXCuBE
 #  https://github.com/mxcube
@@ -17,15 +18,14 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with MXCuBE. If not, see <http://www.gnu.org/licenses/>.
 
+__copyright__ = """Copyright The MXCuBE Collaboration"""
+__license__ = "LGPLv3+"
 
-import os
-import copy
-import logging
+
 import gevent
-import time
 
 from mxcubecore.BaseHardwareObjects import HardwareObject
-from mxcubecore.BaseHardwareObjects import Device
+from mxcubecore.BaseHardwareObjects import HardwareObject
 from gevent import Timeout
 import numpy
 
@@ -37,7 +37,7 @@ from PyTango import DeviceProxy
 last_centred_position = [200, 200]
 
 
-class Centring(Device):
+class Centring(HardwareObject):
     """
     Description:     This class controls the operation of Tango Motor
     """
@@ -64,7 +64,6 @@ class Centring(Device):
         print("-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+")
 
     def initCentringProcedure(self):
-
         print("initCentringProcedure(self)")
         """
         Descript. : call before starting rotate-click sequence

@@ -33,7 +33,7 @@ from math import asin, atan, sin, tan
 from mxcubecore import HardwareRepository as HWR
 from mxcubecore.HardwareObjects.abstract.AbstractMotor import AbstractMotor
 
-__copyright__ = """ Copyright © 2010-2020 by the MXCuBE collaboration """
+__copyright__ = """ Copyright © 2010-2022 by the MXCuBE collaboration """
 __license__ = "LGPLv3+"
 
 
@@ -44,12 +44,13 @@ class AbstractResolution(AbstractMotor):
     unit = "Å"
 
     def __init__(self, name):
-        super(AbstractResolution, self).__init__(name)
+        super().__init__(name)
         self._hwr_detector = None
 
     def init(self):
         """Initialisation"""
-        super(AbstractResolution, self).init()
+        super().init()
+
         self._hwr_detector = (
             self.get_object_by_role("detector") or HWR.beamline.detector
         )
@@ -60,6 +61,9 @@ class AbstractResolution(AbstractMotor):
         self.connect(HWR.beamline.energy, "stateChanged", self.update_state)
 
         self.update_state(self.get_state())
+
+        # initialise the limits
+        self._nominal_limits = self.get_limits()
 
     def get_state(self):
         """Get the state of the distance motor.
@@ -80,16 +84,37 @@ class AbstractResolution(AbstractMotor):
 
     def get_limits(self):
         """Return resolution low and high limits.
+
+        Args:
+            wavelength: Returns the limits for given wavelength if
+                        passed, current wavelength is otherwised used
+
         Returns:
             (tuple): two floats tuple (low limit, high limit).
         """
         _low, _high = self._hwr_detector.distance.get_limits()
 
-        self._limits = (
+        return (
             self.distance_to_resolution(_low),
             self.distance_to_resolution(_high),
         )
-        return self._limits
+
+    def get_limits_for_wavelength(self, wavelength: float):
+        """Return resolution low and high limits.
+
+        Args:
+            wavelength: Returns the limits for given wavelength if
+                        passed, current wavelength is otherwised used
+
+        Returns:
+            (tuple): two floats tuple (low limit, high limit).
+        """
+        _low, _high = self._hwr_detector.distance.get_limits()
+
+        return (
+            self.distance_to_resolution(_low, wavelength=wavelength),
+            self.distance_to_resolution(_high, wavelength=wavelength),
+        )
 
     def set_limits(self, limits):
         """Resolution limits are not settable.
@@ -105,12 +130,13 @@ class AbstractResolution(AbstractMotor):
             value (float): target value [Å]
         """
         distance = self.resolution_to_distance(value)
-        msg = "Move resolution to {} ({} mm)".format(value, distance)
+        msg = f"Move resolution to {value} ({distance} mm)"
         logging.getLogger().info(msg)
         self._hwr_detector.distance.set_value(distance)
 
     def _calculate_resolution(self, radius, distance, wavelength=None):
-        """Calculate the resolution as function of the detector radius and the distance.
+        """Calculate the resolution as function of the detector radius and
+        the distance.
         Args:
             radius (float): Detector radius [mm]
             distance (float): Distance from the sample to the detector [mm]
@@ -196,6 +222,8 @@ class AbstractResolution(AbstractMotor):
             if ttheta:
                 self._nominal_value = _wavelength / (2 * sin(ttheta / 2))
                 self.emit("valueChanged", (self._nominal_value,))
+            # finally update the limits as wavelength changed
+            self.update_limits()
         except (TypeError, ZeroDivisionError):
             logging.getLogger().exception("Error while calculating resolution")
 
@@ -205,4 +233,4 @@ class AbstractResolution(AbstractMotor):
 
     def stop(self):
         """Stop the distance motor movement"""
-        self.self._hwr_detector.distance.stop()
+        self._hwr_detector.distance.stop()

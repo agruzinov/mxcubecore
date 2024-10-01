@@ -20,13 +20,13 @@
 """
 Microdiff with Exporter implementation of AbstartNState
 Example xml file:
-<device class="ExporterNState">
+<object class="ExporterNState">
   <username>Fluorescence Detector</username>
   <exporter_address>wid30bmd2s:9001</exporter_address>
   <value_channel_name>FluoDetectorIsBack</value_channel_name>
   <state_channel_name>State</state_channel_name>
   <values>{"IN": False, "OUT": True}</values>
-</device>
+</object>
 """
 from enum import Enum
 from gevent import sleep
@@ -37,6 +37,7 @@ from mxcubecore.Command.exporter.ExporterStates import ExporterStates
 __copyright__ = """ Copyright © 2020 by the MXCuBE collaboration """
 __license__ = "LGPLv3+"
 
+
 class ExporterNStateMockup(AbstractNState):
     """Microdiff with Exporter implementation of AbstartNState"""
 
@@ -46,11 +47,11 @@ class ExporterNStateMockup(AbstractNState):
         AbstractNState.__init__(self, name)
         # self._mock_value = "OUT"
         # self._mock_state= "READY"
-        
+
     def init(self):
         """Initialise the device"""
         AbstractNState.init(self)
-        value = [e.value for e in self.VALUES][1]
+        value = self.VALUES.OUT
         self.update_state(self.STATES.READY)
         self.update_value(value)
 
@@ -113,7 +114,7 @@ class ExporterNStateMockup(AbstractNState):
             else:
                 value = value.value
 
-        self._nominal_value = value
+        self._nominal_value = self.value_to_enum(value)
         self.update_state(self.STATES.READY)
 
     def get_value(self):
@@ -121,5 +122,5 @@ class ExporterNStateMockup(AbstractNState):
         Returns:
             (Enum): Enum member, corresponding to the value or UNKNOWN.
         """
-        #_val = self._mock_value
-        return self.value_to_enum(self._nominal_value)
+        # _val = self._mock_value
+        return self._nominal_value

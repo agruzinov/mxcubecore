@@ -1,3 +1,4 @@
+# encoding: utf-8
 #
 #  Project: MXCuBE
 #  https://github.com/mxcube
@@ -17,26 +18,33 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with MXCuBE. If not, see <http://www.gnu.org/licenses/>.
 
+__copyright__ = """Copyright The MXCuBE Collaboration"""
+__license__ = "LGPLv3+"
 __author__ = "Jan Meyer"
 __email__ = "jan.meyer@desy.de"
-__copyright__ = "(c)2015 DESY, FS-PE, P11"
-__license__ = "GPL"
 
 
 import gevent
+import json
+import traceback
 
 try:
     from httplib import HTTPConnection
 except ImportError:
     from http.client import HTTPConnection
-import json
 
-from mxcubecore.utils.qt_import import QImage, QPixmap
+try:
+    import redis
+
+    redis_flag = True
+except ImportError:
+    traceback.print_exc()
+    redis_flag = False
+
+from mxcubecore.utils.qt_import import QImage, QPixmap, QPoint
 from mxcubecore.utils.conversion import string_types
-
-from mxcubecore.HardwareObjects.abstract.AbstractVideoDevice import (
-    AbstractVideoDevice,
-)
+from mxcubecore.HardwareObjects.abstract.AbstractVideoDevice import AbstractVideoDevice
+from mxcubecore.BaseHardwareObjects import HardwareObject
 
 
 class MjpgStreamVideo(AbstractVideoDevice):
@@ -258,32 +266,63 @@ class MjpgStreamVideo(AbstractVideoDevice):
         self.image_type = None
         self.image = None
         self.sleep_time = 1
-        self.flip = {"h": False, "v": False}
         self.host = None
         self.port = None
         self.path = "/"
         self.plugin = 0
         self.update_controls = None
         self.input_avt = None
-
+        self.last_jpeg = None
         self.changing_pars = False
+        if redis_flag:
+            self.redis = redis.StrictRedis()
+        else:
+            self.redis = False
 
     def init(self):
         """
         Descript. :
         """
         self.sleep_time = self.get_property("interval")
-        width = self.get_property("width")
-        height = self.get_property("height")
-        self.image_dimensions = (width, height)
-        self.flip["h"] = bool(self.get_property("fliph"))
-        self.flip["v"] = bool(self.get_property("flipv"))
+
+        hw_width = self.get_property("width")
+        hw_height = self.get_property("height")
+        scale = self.get_property("scale", 1)
+
+        self.display_width = hw_width * scale
+        self.display_height = hw_height * scale
+
+        self.log.debug(
+            " MJPG video - width=%s,height=%s - scale=%s" % (hw_width, hw_height, scale)
+        )
+        self.hw_dimensions = (hw_width, hw_height)
+        self.image_dimensions = (self.display_width, self.display_height)
+        self.scale = scale
+
         self.host = self.get_property("host")
         self.port = int(self.get_property("port"))
+
+        self.standard_fliph = bool(self.get_property("fliph"))
+        self.standard_flipv = bool(self.get_property("flipv"))
+        self.standard_offsetx = 0
+        self.standard_offsety = 0
+
+        # parameters for overview camera
+        self.overview_host = self.get_property("overview_host")
+        self.overview_port = int(self.get_property("overview_port"))
+        self.overview_fliph = bool(self.get_property("overview_fliph"))
+        self.overview_flipv = bool(self.get_property("overview_flipv"))
+        self.overview_offsetx = bool(self.get_property("overview_offsetx"))
+        self.overview_offsety = bool(self.get_property("overview_offsety"))
+
         self.path = "/"
         self.plugin = 0
+
+        self.using_overview = False
+
         self.update_controls = self.has_update_controls()
         self.input_avt = self.is_input_avt()
+
         self.image = self.get_new_image()
 
         if self.input_avt:
@@ -295,8 +334,8 @@ class MjpgStreamVideo(AbstractVideoDevice):
                 sensor_height = int(sensor_info["value"])
             self.sensor_dimensions = (sensor_width, sensor_height)
 
-        self.set_is_ready(True)
-
+        # self.is_ready()
+        self.set_zoom(0)  # overview camera
 
     def http_get(self, query, host=None, port=None, path=None):
         """Sends HTTP GET requests and returns the answer.
@@ -311,14 +350,19 @@ class MjpgStreamVideo(AbstractVideoDevice):
         the HTTP answer content or None on error
 
         """
-        if host is None:
-            host = self.host
-        if port is None:
-            port = self.port
-        if path is None:
+        if self.using_overview is True:
+            host = self.overview_host
+            port = self.overview_port
             path = self.path
+        else:
+            host = self.host
+            port = self.port
+            path = self.path
+
         # send get request and return response
         http = HTTPConnection(host, port, timeout=3)
+        # self.log.debug("MjpgStreamVideo: %s:%s - sending %s / %s " % (host,port,path,query))
+
         try:
             http.request("GET", path + query)
             response = http.getresponse()
@@ -484,7 +528,7 @@ class MjpgStreamVideo(AbstractVideoDevice):
         if query is not None:
             data = self.http_get(query)
             if data is not None:
-                data = json.loads(data.decode('utf-8'))
+                data = json.loads(data.decode("utf-8"))
                 if dest != self.DEST_PROGRAM and "controls" in data:
                     data = data["controls"]
                 return data
@@ -528,6 +572,9 @@ class MjpgStreamVideo(AbstractVideoDevice):
 
     def get_image_dimensions(self):
         return self.image_dimensions
+
+    def get_scale(self):
+        return self.scale
 
     def imageType(self):
         """
@@ -753,44 +800,75 @@ class MjpgStreamVideo(AbstractVideoDevice):
         """
         Descript. : Sets digital zoom factor.
         """
-        limits = self.get_zoom_min_max()
-        if zoom < limits[0] or zoom > limits[1]:
-            return
-
-        width = self.image_dimensions[0] / zoom
-        height = self.image_dimensions[1] / zoom
-
-        self.log.debug("ZOOM setting zoom %s" % zoom)
-        self.log.debug("  - image_dims: %s / sensor_dims: %s" % (str(self.image_dimensions), str(self.sensor_dimensions)))
-
         self.changing_pars = True
 
-        pos_x = (self.sensor_dimensions[0] - width) / 2
-        pos_y = (self.sensor_dimensions[1] - height) / 2
+        if zoom == 0:
+            self.using_overview = True
+            width = self.sensor_dimensions[0] - 200
+            height = self.sensor_dimensions[1] - 200
 
-        pos_x = int(pos_x)
-        pos_y = int(pos_y)
-        width = int(width)
-        height = int(height)
+            offx, offy = self.overview_offsetx, self.overview_offsety
+
+            pos_x = int(60)
+            pos_y = int(232)
+        else:
+            self.using_overview = False
+
+            limits = self.get_zoom_min_max()
+            if zoom < limits[0] or zoom > limits[1]:
+                return
+
+            display_dimensions = self.image_dimensions
+            width = display_dimensions[0] / zoom
+            height = display_dimensions[1] / zoom
+
+            pos_x = (self.sensor_dimensions[0] - width) / 2
+            pos_y = (self.sensor_dimensions[1] - height) / 2
+
+            pos_x = int(pos_x)
+            pos_y = int(pos_y)
+
+            width = int(width)
+            height = int(height)
 
         self.send_cmd(1, self.IN_CMD_AVT_BINNING_X)
+        gevent.sleep(0.1)
         self.send_cmd(1, self.IN_CMD_AVT_BINNING_Y)
+        gevent.sleep(0.1)
 
         for i in range(3):  # try to program it three times
+            if pos_x == 0:
+                self.send_cmd(pos_x, self.IN_CMD_AVT_REGION_X)
+                gevent.sleep(0.01)
+            if pos_y == 0:
+                self.send_cmd(pos_y, self.IN_CMD_AVT_REGION_Y)
+                gevent.sleep(0.01)
+
             self.send_cmd(width, self.IN_CMD_AVT_WIDTH)
+            gevent.sleep(0.01)
             self.send_cmd(height, self.IN_CMD_AVT_HEIGHT)
-            self.send_cmd(pos_x, self.IN_CMD_AVT_REGION_X)
-            self.send_cmd(pos_y, self.IN_CMD_AVT_REGION_Y)
+            gevent.sleep(0.01)
 
-            x_i = int(self.get_cmd_info(self.IN_CMD_AVT_REGION_X)['value'])
-            y_i = int(self.get_cmd_info(self.IN_CMD_AVT_REGION_Y)['value'])
-            w_i = int(self.get_cmd_info(self.IN_CMD_AVT_WIDTH)['value'])
-            h_i = int(self.get_cmd_info(self.IN_CMD_AVT_HEIGHT)['value'])
+            if pos_y > 0:
+                self.send_cmd(pos_y, self.IN_CMD_AVT_REGION_Y)
+                gevent.sleep(0.01)
+            if pos_x > 0:
+                self.send_cmd(pos_x, self.IN_CMD_AVT_REGION_X)
+                gevent.sleep(0.01)
 
-            self.log.debug("(w) pos_x, pos_y: (%s,%s) / w, h (%s,%s)" % (pos_x, pos_y, width, height))
-            self.log.debug("(r) pos_x, pos_y: (%s,%s) / w, h (%s,%s)" % (x_i, y_i, w_i, h_i))
+            x_i = int(self.get_cmd_info(self.IN_CMD_AVT_REGION_X)["value"])
+            y_i = int(self.get_cmd_info(self.IN_CMD_AVT_REGION_Y)["value"])
+            w_i = int(self.get_cmd_info(self.IN_CMD_AVT_WIDTH)["value"])
+            h_i = int(self.get_cmd_info(self.IN_CMD_AVT_HEIGHT)["value"])
 
-            if abs(x_i-pos_x) > 3 or abs(y_i-pos_y) >3 or abs(w_i-width) >3 or abs(h_i-height) >3:
+            self.emit("zoomChanged", zoom)
+
+            if (
+                abs(x_i - pos_x) > 3
+                or abs(y_i - pos_y) > 3
+                or abs(w_i - width) > 3
+                or abs(h_i - height) > 3
+            ):
                 self.log.debug(" - trying to program zoom again")
                 gevent.sleep(0.1)
                 continue
@@ -798,17 +876,23 @@ class MjpgStreamVideo(AbstractVideoDevice):
                 break
 
         self.changing_pars = False
-
-        self.emit("zoomChanged", self.get_zoom())
+        zoom = self.get_zoom()
+        if redis_flag:
+            self.redis.set("zoom", zoom)
+        self.emit("zoomChanged", zoom)
 
     def get_zoom(self):
         """
         Descript. : Returns the digital zoom factor.
         """
+        if self.using_overview:
+            return 0
+
         info = self.get_cmd_info(self.IN_CMD_AVT_WIDTH)
         if info is not None:
             return self.image_dimensions[0] / float(info["value"])
-        return
+
+        return None
 
     def get_zoom_min_max(self):
         """
@@ -840,9 +924,19 @@ class MjpgStreamVideo(AbstractVideoDevice):
         Descript. : reads new image, flips it if necessary and returns the
                     result or None on error
         """
+        if self.using_overview:
+            fliph, flipv = self.overview_fliph, self.overview_flipv
+            offx, offy = self.overview_offsetx, self.overview_offsety
+        else:
+            fliph, flipv = self.standard_fliph, self.standard_flipv
+            offx, offy = self.standard_offsetx, self.standard_offsety
+
         image = self.http_get("?action=snapshot")
         if image is not None:
-            return QImage.fromData(image).mirrored(self.flip["h"], self.flip["v"])
+            self.last_jpeg = image
+            if redis_flag:
+                self.redis.set("last_image_data", image)
+            return QImage.fromData(image).mirrored(fliph, flipv)
         return None
 
     def refresh_video(self):
@@ -852,7 +946,11 @@ class MjpgStreamVideo(AbstractVideoDevice):
         """
         image = self.get_new_image()
         if image is not None:
-            self.image = QPixmap.fromImage(image.scaled(self.width, self.height))
+            image = image.scaled(self.display_width, self.display_height)
+            # image.setOffset(QPoint(300,300))
+            self.image = QPixmap.fromImage(
+                image.scaled(self.display_width, self.display_height)
+            )
             self.emit("imageReceived", self.image)
 
     def take_snapshot(self, filename, bw=False):
@@ -866,22 +964,21 @@ class MjpgStreamVideo(AbstractVideoDevice):
             #    qimage.setNumColors(0)
             qimage.save(filename, "PNG")
         except Exception:
-            self.log.error(
-                "MjpgStreamVideo: unable to save snapshot: %s" % filename
-            )
+            self.log.error("MjpgStreamVideo: unable to save snapshot: %s" % filename)
 
     def _do_imagePolling(self, sleep_time):
         """
         Descript. : worker method
         """
         while True:
-            if self.changing_pars:
+            while self.changing_pars:
                 self.log.debug("  / not reading image. busy changing pars")
                 gevent.sleep(sleep_time)
                 continue
 
             image = self.get_new_image()
             if image is not None:
-                self.image = QPixmap.fromImage(image.scaled(self.width, self.height))
+                self.image = QPixmap.fromImage(
+                    image.scaled(int(self.display_width), int(self.display_height))
+                )
                 self.emit("imageReceived", self.image)
-            #gevent.sleep(sleep_time)

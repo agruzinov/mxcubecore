@@ -37,7 +37,6 @@ class ISPyBRestClient(HardwareObject):
         self.beamline_name = None
 
     def init(self):
-
         if HWR.beamline.session:
             self.beamline_name = HWR.beamline.session.beamline_name
         else:
@@ -56,9 +55,6 @@ class ISPyBRestClient(HardwareObject):
             pass
 
         self.__update_rest_token()
-
-    def get_login_type(self):
-        return "user"
 
     def __update_rest_token(self):
         """
@@ -102,7 +98,16 @@ class ISPyBRestClient(HardwareObject):
             logging.getLogger("ispyb_client").exception(msg)
         else:
             msg = "Authenticated to LIMS token is: %s" % self.__rest_root
-            logging.getLogger("ispyb_client").exception(msg)
+            logging.getLogger("ispyb_client").debug(msg)
+
+    def get_rest_token(self):
+        """
+        Get the LIMS rest_token
+
+        :returns:  REST token
+        """
+        self.__update_rest_token()
+        return self.__rest_token
 
     def sample_link(self):
         """
@@ -183,7 +188,7 @@ class ISPyBRestClient(HardwareObject):
             response = json.loads(get(url).text)[0]
         except Exception as ex:
             response = None
-            logging.getLogger("ispyb_client").exception(str(ex))
+            # logging.getLogger("ispyb_client").exception(str(ex))
 
         lims_dc = {}
         lims_dc["workflow_result_url_list"] = []

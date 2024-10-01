@@ -23,7 +23,7 @@ __license__ = "LGPLv3+"
 import copy
 from functools import reduce
 
-from mxcubecore.HardwareObjects import queue_model_objects
+from mxcubecore.model import queue_model_objects
 
 from mxcubecore.HardwareObjects.abstract.AbstractSampleView import (
     AbstractSampleView,
@@ -39,17 +39,21 @@ class SampleView(AbstractSampleView):
 
     def init(self):
         super(SampleView, self).init()
-
         self._camera = self.get_object_by_role("camera")
-        self._focus = self.get_object_by_role("focus")
-        self._zoom = self.get_object_by_role("zoom")
-        self._frontlight = self.get_object_by_role("frontlight")
-        self._backlight = self.get_object_by_role("backlight")
-        self._diffractometer = self.get_object_by_role("diffractometer")
-
         self._ui_snapshot_cb = None
+        self._last_oav_image = None
 
         self.hide_grid_threshold = self.get_property("hide_grid_threshold", 5)
+        for motor_name, motor_ho in HWR.beamline.diffractometer.get_motors().items():
+            if motor_ho:
+                motor_ho.connect("stateChanged", self._update_shape_positions)
+
+    def _update_shape_positions(self, *args, **kwargs):
+
+        for shape in self.get_shapes():
+            shape.update_position(HWR.beamline.diffractometer.motor_positions_to_screen)
+
+        self.emit("shapesChanged")
 
     @property
     def shapes(self):
@@ -77,7 +81,7 @@ class SampleView(AbstractSampleView):
         self._ui_snapshot_cb = fun
 
     def get_snapshot(self, overlay=True, bw=False, return_as_array=False):
-        """ Get snappshot(s)
+        """Get snapshot(s)
         Args:
             overlay(bool): Display shapes and other items on the snapshot
             bw(bool): return grayscale image
@@ -86,23 +90,29 @@ class SampleView(AbstractSampleView):
         pass
 
     def save_snapshot(self, path, overlay=True, bw=False):
-        """ Save a snapshot to file.
+        """Save a snapshot to file.
         Args:
             path (str): The filename.
             overlay(bool): Display shapes and other items on the snapshot
             bw(bool): return grayscale image
         """
         if overlay:
-            img = self._ui_snapshot_cb(path, bw)
+            self._ui_snapshot_cb(path, bw)
         else:
             self.camera.take_snapshot(path, bw)
+
+        self._last_oav_image = path
+
+    def get_last_image_path(self):
+        return self._last_oav_image
 
     def add_shape(self, shape):
         """
         Add the shape <shape> to the dictionary of handled shapes.
 
-        :param shape: Shape to add.
-        :type shape: Shape object.
+        Args:
+            param (shape): Shape to add.
+            type (shape): Shape object.
         """
         self.shapes[shape.id] = shape
         shape.shapes_hw_object = self
@@ -319,16 +329,37 @@ class SampleView(AbstractSampleView):
 
         return grid
 
-    def set_grid_data(self, sid, result_data):
+    def set_grid_data(self, sid, result_data, data_file_path):
+        """
+        Sets grid rsult data for a shape with the specified id.
+
+        Args:
+            sid (str): The id of the shape to set grid data for.
+            result_data: The result data to set for the shape. Either a base64 encoded string for PNG/image
+            or a dictionary for RGB (keys are cell number and value RGBa list). Data is only updated if result is RGB based
+            data_file_path (str): The path to the data file associated with the result data.
+
+        Returns:
+            None
+
+        Raises:
+            AttributeError: If no shape with the specified id exists.
+        """
+
         shape = self.get_shape(sid)
 
         if shape:
-            shape.set_result(result_data)
+            if shape.result and type(shape.result) == dict:
+                # append data
+                shape.result.update(result_data)
+            else:
+                shape.set_result(result_data)
+                shape.result_data_path = data_file_path
+
             self.emit("newGridResult", shape)
         else:
             msg = "Cant set result for %s, no shape with id %s" % (sid, sid)
             raise AttributeError(msg)
-
 
     def get_grid_data(self, key):
         result = {}
@@ -347,7 +378,6 @@ class SampleView(AbstractSampleView):
         Args:
             cpos (CenteredPosition): CenteredPosition of shape
         """
-        # Signature incompatible with AbstractSampleView
         pass
 
 
@@ -512,7 +542,9 @@ class Grid(Shape):
         self.num_cols = -1
         self.num_rows = -1
         self.selected = False
-        self.result = []
+        # result is a base64 encoded string for PNG/image heatmap results
+        # or a dictionary (for RGB number based results)
+        self.result = None
         self.pixels_per_mm = [1, 1]
         self.beam_pos = [1, 1]
         self.beam_width = 0
@@ -522,10 +554,10 @@ class Grid(Shape):
         self.set_id(Grid.SHAPE_COUNT)
 
     def update_position(self, transform):
-        phi_pos = HWR.beamline.diffractometer.phiMotor.get_value() % 360
-        d = abs((self.get_centred_position().phi % 360) - phi_pos)
+        phi_pos = HWR.beamline.diffractometer.omega.get_value() % 360
+        _d = abs((self.get_centred_position().phi % 360) - phi_pos)
 
-        if min(d, 360 - d) > self.shapes_hw_object.hide_grid_threshold:
+        if min(_d, 360 - _d) > self.shapes_hw_object.hide_grid_threshold:
             self.state = "HIDDEN"
         else:
             super(Grid, self).update_position(transform)
@@ -554,7 +586,6 @@ class Grid(Shape):
 
     def set_result(self, result_data):
         self.result = result_data
-        self._result = result_data
 
     def get_result(self):
         return self.result
@@ -564,19 +595,19 @@ class Grid(Shape):
         # replace cpos_list with the motor positions
         d["motor_positions"] = self.cp_list[0].as_dict()
 
+        pixels_per_mm = HWR.beamline.diffractometer.get_pixels_per_mm()
+        beam_pos = HWR.beamline.beam.get_beam_position_on_screen()
+        size_x, size_y, shape, _label = HWR.beamline.beam.get_value()
+
         # MXCuBE - 2 WF compatability
-        d["x1"] = -float(
-            (self.beam_pos[0] - d["screen_coord"][0]) / self.pixels_per_mm[0]
-        )
-        d["y1"] = -float(
-            (self.beam_pos[1] - d["screen_coord"][1]) / self.pixels_per_mm[1]
-        )
+        d["x1"] = -float((beam_pos[0] - d["screen_coord"][0]) / pixels_per_mm[0])
+        d["y1"] = -float((beam_pos[1] - d["screen_coord"][1]) / pixels_per_mm[1])
         d["steps_x"] = d["num_cols"]
         d["steps_y"] = d["num_rows"]
-        d["dx_mm"] = d["width"] / self.pixels_per_mm[0]
-        d["dy_mm"] = d["height"] / self.pixels_per_mm[1]
-        d["beam_width"] = d["beam_width"]
-        d["beam_height"] = d["beam_height"]
+        d["dx_mm"] = d["width"] / pixels_per_mm[0]
+        d["dy_mm"] = d["height"] / pixels_per_mm[1]
+        d["beam_width"] = size_x
+        d["beam_height"] = size_y
         d["angle"] = 0
 
         return d

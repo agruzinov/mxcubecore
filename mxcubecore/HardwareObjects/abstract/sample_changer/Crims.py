@@ -1,16 +1,22 @@
-import time
 import xml.etree.cElementTree as et
 
-try:
-    from urllib import urlopen
-except ImportError:
-    from urllib.request import urlopen
+import requests
+from PIL import Image
+from io import BytesIO
+
+import urllib
 
 
 def get_image(url):
-    f = urlopen(url)
+    f = urllib.request.urlopen(url)
     img = f.read()
     return img
+
+
+def get_image_size(url):
+    img_data = requests.get(url).content
+    im = Image.open(BytesIO(img_data))
+    return (im.size)
 
 
 class CrimsXtal:
@@ -27,6 +33,7 @@ class CrimsXtal:
         self.comments = ""
         self.offset_x = 0.0
         self.offset_y = 0.0
+        self.shape = ""
         self.image_url = ""
         self.image_rotation = 0.0
         self.summary_url = ""
@@ -39,10 +46,15 @@ class CrimsXtal:
             try:
                 if self.image_url.startswith("http://"):
                     self.image_url = "https://" + self.image_url[7]
-                image_string = urlopen(self.image_url).read()
+                image_string = urllib.request.urlopen(self.image_url).read()
                 return image_string
             except Exception:
                 return
+
+    def get_image_size(self):
+        img_data = requests.get(self.image_url).content
+        im = Image.open(BytesIO(img_data))
+        return (im.size)
 
     def get_summary_url(self):
         if len(self.summary_url == 0):
@@ -62,17 +74,21 @@ class ProcessingPlan:
         self.plate = Plate()
 
 
-def get_processing_plan(barcode, crims_url):
+def get_processing_plan(barcode, crims_url, crims_user_agent, harvester_key):
+    processing_plan = None
     try:
-        url = (
-            crims_url
-            + "/htxlab/index.php?option=com_crimswebservices"
-            + "&format=raw&task=getbarcodextalinfos&barcode=%s&action=insitu" % barcode
-        )
-        f = urlopen(url)
-        xml = f.read()
+        xml = None
+        url = f"{crims_url}{barcode}/plans/xml"
 
-        import xml.etree.cElementTree as et
+        headers = {
+            'User-Agent' : crims_user_agent,
+            'harvester-key' : harvester_key,
+        }
+
+        req = urllib.request.Request(url, data=None, headers=headers)
+
+        with urllib.request.urlopen(req) as response:
+            xml = response.read()
 
         tree = et.fromstring(xml)
 
@@ -81,25 +97,64 @@ def get_processing_plan(barcode, crims_url):
 
         processing_plan.plate.barcode = plate.find("Barcode").text
         processing_plan.plate.plate_type = plate.find("PlateType").text
+        for x in plate.findall("Drop"):
+            if (x.find("Pin")):
+                xtal = CrimsXtal()
+                xtal.pin_id = x.find("Pin").find("PinUUID").text
+                xtal.crystal_uuid = x.find("Pin").find("Xtal").find("CrystalUUID").text
+                # xtal.label = x.find("Label").text
+                # xtal.login = plate.find("Login").text
+                xtal.sample = x.find("Sample").text
+                xtal.id_sample = int(x.find("idSample").text)
+                xtal.column = int(x.find("Column").text)
+                xtal.row = x.find("Row").text
+                xtal.shelf = int(x.find("Shelf").text)
+                # xtal.comments = x.find("Comments").text
+                xtal.offset_x = float(x.find("Pin").find("Xtal").find("X").text) / 100.0
+                xtal.offset_y = float(x.find("Pin").find("Xtal").find("Y").text) / 100.0
+                xtal.shape = x.find("Pin").find("Shape").text
+                xtal.image_url = x.find("IMG_URL").text
 
-        for x in plate.findall("Xtal"):
-            xtal = CrimsXtal()
-            xtal.crystal_uuid = x.find("CrystalUUID").text
-            xtal.label = x.find("Label").text
-            xtal.login = x.find("Login").text
-            xtal.sample = x.find("Sample").text
-            xtal.id_sample = int(x.find("idSample").text)
-            xtal.column = int(x.find("Column").text)
-            xtal.row = x.find("Row").text
-            xtal.shelf = int(x.find("Shelf").text)
-            xtal.comments = x.find("Comments").text
-            xtal.offset_x = float(x.find("offsetX").text) / 100.0
-            xtal.offset_y = float(x.find("offsetY").text) / 100.0
-            xtal.image_url = x.find("IMG_URL").text
-            xtal.image_date = x.find("IMG_Date").text
-            xtal.image_rotation = float(x.find("ImageRotation").text)
-            xtal.summary_url = x.find("SUMMARY_URL").text
-            processing_plan.plate.xtal_list.append(xtal)
+                xtal.image_height = get_image_size(x.find("IMG_URL").text)[0]
+                xtal.image_width = get_image_size(x.find("IMG_URL").text)[1]
+
+                xtal.image_date = x.find("IMG_Date").text
+                xtal.image_rotation = float(x.find("ImageRotation").text)
+                # xtal.summary_url = x.find("SUMMARY_URL").text
+                processing_plan.plate.xtal_list.append(xtal)
         return processing_plan
-    except Exception:
-        return
+    except Exception as ex:
+        print("Error on getting processing plan because of: %s" % str(ex))
+        return processing_plan
+
+
+def send_data_collection_info_to_crims(
+    crims_url: str,
+    crystaluuid: str,
+    datacollectiongroupid: str,
+    dcid: str,
+    proposal: str,
+    rest_token: str,
+    crims_key: str
+) -> str:
+    try:
+
+        url = (
+            f"{crims_url}{crystaluuid}/dcgroupid/{datacollectiongroupid}/dcid/"
+            f"{dcid}/mx/{proposal}/token/{rest_token}?janitor_key={crims_key}"
+        )
+
+        # data = {
+        #     "crystal_uuid": str(crystaluuid),
+        #     "datacollectionGroupId": str(datacollectiongroupid),
+        #     "dcid": str(dcid),
+        #     "mx": str(proposal),
+        #     "token": str(rest_token),
+        # }
+        response = requests.get(url, timeout=900)
+        # response = post(url, data=data, timeout=900)
+        print(response.text)
+        return response.text
+    except Exception as ex:
+        msg = "POST to %s failed reason %s" % (url, str(ex))
+        return msg

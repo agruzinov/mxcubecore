@@ -1,58 +1,43 @@
 """
-Class for streaming MPEG1 video with cameras connected to 
+Class for streaming MPEG1 video with cameras connected to
 Lima Tango Device Servers
 
 Example configuration:
 
-<device class="TangoLimaMpegVideo">
+<object class="TangoLimaMpegVideo">
   <username>Prosilica 1350C</username>
   <tangoname>id23/limaccd/minidiff</tangoname>
   <bpmname>id23/limabeamviewer/minidiff</bpmname>
   <exposure_time>0.05</exposure_time>
   <video_mode>RGB24</video_mode>
-</device>
+</object>
 """
-import logging
+
 import os
 import subprocess
 import uuid
 import psutil
 
 from mxcubecore.HardwareObjects.TangoLimaVideo import TangoLimaVideo
-from mxcubecore.utils.video_utils import streaming_processes
 
 
 class TangoLimaMpegVideo(TangoLimaVideo):
     def __init__(self, name):
         super(TangoLimaMpegVideo, self).__init__(name)
-
+        self._format = "MPEG1"
         self._video_stream_process = None
-        self._current_stream_size = "-1, -1"
-        self._stream_script_path = ""
+        self._current_stream_size = "0, 0"
         self.stream_hash = str(uuid.uuid1())
-        self.video_device = None
-        self._p = None
         self._quality_str = "High"
-        self._QUALITY_STR_TO_INT = {
-            "High": 4,
-            "Medium": 10,
-            "Low": 20,
-            "Adaptive": -1
-        }
+        self._QUALITY_STR_TO_INT = {"High": 4, "Medium": 10, "Low": 20, "Adaptive": -1}
+        self._port = 8000
 
     def init(self):
         super().init()
         self._debug = self.get_property("debug", False)
-        self._loopback_device = self.get_property("loopback_device", "")
         self._quality = self.get_property("compression", 10)
         self._mpeg_scale = self.get_property("mpeg_scale", 1)
-    def _encoder_friendly_size(self, w, h):
-        # Some video decoders have difficulties to decode videos with odd image dimensions
-        # (JSMPEG beeing one of them) so we make sure that the size is even
-        w = w if w % 2 == 0 else w + 1
-        h = h if h % 2 == 0 else h + 1
-
-        return w, h
+        self._image_size = (self.get_width(), self.get_height())
 
     def get_quality(self):
         return self._quality_str
@@ -63,7 +48,6 @@ class TangoLimaMpegVideo(TangoLimaVideo):
         self.restart_streaming()
 
     def set_stream_size(self, w, h):
-        w, h = self._encoder_friendly_size(w, h)
         self._current_stream_size = "%s,%s" % (int(w), int(h))
 
     def get_stream_size(self):
@@ -76,41 +60,35 @@ class TangoLimaMpegVideo(TangoLimaVideo):
 
     def get_available_stream_sizes(self):
         try:
-            w, h = self._encoder_friendly_size(self.get_width(), self.get_height())
-            # Calculate half the size and quarter of the size if MPEG streaming is used
-            # otherwise just return the orignal size.
-            if self._video_stream_process:
-                video_sizes = [(w, h), (w / 2, h / 2), (w / 4, h / 4)]
-            else:
-                video_sizes = [(w, h)]
-
+            w, h = self.get_width(), self.get_height()
+            video_sizes = [(w, h), (int(w / 2), int(h / 2)), (int(w / 4), int(h / 4))]
         except (ValueError, AttributeError):
             video_sizes = []
 
         return video_sizes
 
-    def start_video_stream_process(self):
+    def start_video_stream_process(self, port):
         if (
             not self._video_stream_process
             or self._video_stream_process.poll() is not None
         ):
-            python_executable = os.sep.join(
-                os.path.dirname(os.__file__).split(os.sep)[:-2] + ["bin", "python"]
-            )
-
             self._video_stream_process = subprocess.Popen(
                 [
-                    python_executable,
-                    streaming_processes.__file__,
-                    self.get_property("tangoname"),
-                    "%s, %s" % (self.get_width(), self.get_height()),
+                    "video-streamer",
+                    "-uri",
+                    self.get_property("tangoname").strip(),
+                    "-hs",
+                    "localhost",
+                    "-p",
+                    str(self._port),
+                    "-q",
+                    str(self._quality),
+                    "-s",
                     self._current_stream_size,
+                    "-of",
+                    self._format,
+                    "-id",
                     self.stream_hash,
-                    self.video_mode,
-                    self._loopback_device,
-                    str(self._debug),
-                    str(self._sleep_time),
-                    str(self._quality)
                 ],
                 close_fds=True,
             )
@@ -120,24 +98,32 @@ class TangoLimaMpegVideo(TangoLimaVideo):
 
     def stop_streaming(self):
         if self._video_stream_process:
-            ps = [self._video_stream_process] + psutil.Process(
-                self._video_stream_process.pid
-            ).children()
-            for p in ps:
-                p.kill()
+            try:
+                ps = [self._video_stream_process] + psutil.Process(
+                    self._video_stream_process.pid
+                ).children()
+                for p in ps:
+                    p.kill()
+            except psutil.NoSuchProcess:
+                pass
+
             self._video_stream_process = None
 
-    def start_streaming(self, size=()):
-        if not size:
-            w, h = self.get_width(), self.get_height()
+    def start_streaming(self, _format=None, size=(0, 0), port=None):
+        if _format:
+            self._format = _format
+
+        if port:
+            self._port = port
+
+        if not size[0]:
+            _s = self.get_width(), self.get_height()
         else:
-            w, h = size
+            _s = size
 
-        self.set_stream_size(w * self._mpeg_scale, h * self._mpeg_scale)
-        self.start_video_stream_process()
+        self.set_stream_size(_s[0], _s[1])
+        self.start_video_stream_process(self._port)
 
-        return self.video_device
-
-    def restart_streaming(self, size=()):
+    def restart_streaming(self, size):
         self.stop_streaming()
-        self.start_streaming(size)
+        self.start_streaming(self._format, size=size)

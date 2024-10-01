@@ -18,14 +18,19 @@
 #  You should have received a copy of the GNU General Lesser Public License
 #  along with MXCuBE. If not, see <http://www.gnu.org/licenses/>.
 
-""" Photon fluc calculations
-Example xml file:
-<object class="ESRF.ESRFPhotonFlux">
-  <username>Photon flux</username>
-  <object role="controller" href="/bliss"/>
-  <object role="aperture" href="/udiff_aperture"/>
-  <counter_name>i0</counter_name>
-</object>
+""" Photon flux calculations
+Example xml_ configuration:
+
+.. code-block:: xml
+
+ <object class="ESRF.ESRFPhotonFlux">
+   <username>Photon flux</username>
+   <object role="controller" href="/bliss"/>
+   <object role="aperture" href="/udiff_aperture"/>
+   <counter_name>i0</counter_name>
+   <beam_check_name>checkbeam</beam_check_name>
+   <object role="monitor_beam" href="/monitor_beam"/>
+ </object>
 """
 import logging
 import gevent
@@ -38,15 +43,17 @@ class ESRFPhotonFlux(AbstractFlux):
     """Photon flux calculation for ID30B"""
 
     def __init__(self, name):
-        super(ESRFPhotonFlux, self).__init__(name)
+        super().__init__(name)
         self._counter = None
         self._flux_calc = None
         self._aperture = None
         self.threshold = None
+        self._beam_check_obj = None
+        self._monitorbeam_obj = None
 
     def init(self):
         """Initialisation"""
-        super(ESRFPhotonFlux, self).init()
+        super().init()
         controller = self.get_object_by_role("controller")
 
         self._aperture = self.get_object_by_role("aperture")
@@ -67,20 +74,27 @@ class ESRFPhotonFlux(AbstractFlux):
             self._counter = self.get_object_by_role("counter")
 
         beam_check = self.get_property("beam_check_name")
-        if beam_check:
-            self.beam_check = getattr(controller, beam_check)
 
-        HWR.beamline.safety_shutter.connect("stateChanged", self.update_value)
+        if beam_check:
+            self._beam_check_obj = getattr(controller, beam_check)
+
+        self._monitorbeam_obj = self.get_object_by_role("monitor_beam")
+
+        try:
+            HWR.beamline.safety_shutter.connect("stateChanged", self.update_value)
+        except AttributeError as err:
+            raise RuntimeError("Safety shutter is not configured") from err
+
         self._poll_task = gevent.spawn(self._poll_flux)
 
     def _poll_flux(self):
+        """Poll the flux every 2 seconds"""
         while True:
             self.re_emit_values()
-            gevent.sleep(0.5)
+            gevent.sleep(3)
 
     def get_value(self):
-        """Calculate the flux value as function of a reading
-        """
+        """Calculate the flux value as function of a reading"""
 
         counts = self._counter.raw_read
         if isinstance(counts, list):
@@ -89,18 +103,24 @@ class ESRFPhotonFlux(AbstractFlux):
         if counts == -9999:
             counts = 0.0
 
-        egy = HWR.beamline.energy.get_value()
-        calib = self._flux_calc.calc_flux_factor(egy * 1000.0)[self._counter.name]
+        try:
+            egy = HWR.beamline.energy.get_value()
+            calib = self._flux_calc.calc_flux_factor(egy * 1000.0)[
+                self._counter.diode.name
+            ]
+        except AttributeError:
+            egy = 0
+            calib = 0
 
         try:
             label = self._aperture.get_value().name
             aperture_factor = self._aperture.get_factor(label)
             if isinstance(aperture_factor, tuple):
-                factor = aperture_factor[0] + aperture_factor[1]*egy
+                factor = aperture_factor[0] + aperture_factor[1] * egy
             else:
                 factor = float(aperture_factor)
         except (AttributeError, ValueError, RuntimeError):
-            factor = 1.
+            factor = 1.0
 
         counts = abs(counts * calib * factor)
         if counts < self.threshold:
@@ -108,12 +128,13 @@ class ESRFPhotonFlux(AbstractFlux):
 
         return counts
 
+    @property
     def check_beam(self):
         """Check if there is beam
         Returns:
             (bool): True if beam present, False otherwise
         """
-        return self.beam_check.check_beam()
+        return self._beam_check_obj.check_beam()
 
     def wait_for_beam(self, timeout=None):
         """Wait until beam present
@@ -123,4 +144,14 @@ class ESRFPhotonFlux(AbstractFlux):
                                               (default);
                              if timeout is None: wait forever.
         """
-        self.beam_check.wait_for_beam(timeout)
+        if self._monitorbeam_obj:
+            try:
+                check = self._monitorbeam_obj.get_value().value
+            except AttributeError:
+                check = False
+            if check is True:
+                try:
+                    return self._beam_check_obj.wait_for_beam(timeout)
+                except AttributeError:
+                    return True
+        return True

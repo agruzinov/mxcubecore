@@ -28,7 +28,7 @@ Example xml file:
   <name>safshut</name>
   <type>tango</type>
   <object href="/bliss" role="controller"/>
-</device>
+</object>
 """
 from enum import Enum, unique
 import gevent
@@ -54,7 +54,7 @@ class BlissShutterStates(Enum):
 
 
 class BlissShutter(AbstractShutter):
-    """BLISS implementation of AbstractShutter """
+    """BLISS implementation of AbstractShutter"""
 
     SPECIFIC_STATES = BlissShutterStates
 
@@ -89,7 +89,7 @@ class BlissShutter(AbstractShutter):
             gevent.sleep(0.5)
 
     def _initialise_values(self):
-        """ Add the tango states to VALUES"""
+        """Add the tango states to VALUES"""
         values_dict = {item.name: item.value for item in self.VALUES}
         values_dict.update(
             {

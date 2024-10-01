@@ -157,10 +157,15 @@ class MultiCollectMockup(AbstractMultiCollect, HardwareObject):
     ):
         return
 
-    def prepare_oscillation(self, start, osc_range, exptime, npass):
+    def prepare_oscillation(
+        self, start, osc_range, exptime, number_of_images, shutterless, first_frame
+    ):
         return (start, start + osc_range)
 
-    def do_oscillation(self, start, end, exptime, npass):
+
+    def do_oscillation(
+        self, start, end, exptime, number_of_images, shutterless, first_frame
+    ):
         gevent.sleep(exptime)
 
     def start_acquisition(self, exptime, npass, first_frame):
@@ -239,13 +244,13 @@ class MultiCollectMockup(AbstractMultiCollect, HardwareObject):
 
     def get_machine_message(self):
         if self.bl_control.machine_current is not None:
-            return self.bl_control.machine_current.getMessage()
+            return self.bl_control.machine_current.get_message()
         else:
             return ""
 
     def get_machine_fill_mode(self):
         if self.bl_control.machine_current is not None:
-            return self.bl_control.machine_current.getFillMode()
+            return self.bl_control.machine_current.get_fill_mode()
         else:
             ""
 

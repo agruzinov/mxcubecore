@@ -40,15 +40,6 @@ __license__ = "LGPLv3+"
 class Resolution(AbstractResolution):
     """Resolution as motor"""
 
-    unit = "Å"
-
-    def __init__(self, name):
-        super(Resolution, self).__init__(name)
-
-    def init(self):
-        """Initialisation"""
-        super(Resolution, self).init()
-
     def set_value(self, value, timeout=None):
         """Set the resolution.
         Args:
@@ -56,7 +47,7 @@ class Resolution(AbstractResolution):
             timeout(float): optional - timeout [s],
                              if timeout is None: wait forever (default).
         """
-        # The precision depoends on the difference between the current
+        # The precision depends on the difference between the current
         # resolution and the target value - the smaller the difference,
         # the better the precision.
         # We move twice to get the closet possible to the requested resolution.
